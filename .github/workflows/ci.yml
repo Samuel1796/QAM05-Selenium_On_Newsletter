@@ -5,6 +5,8 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
+  repository_dispatch:
+    types: [ newsletter-update ]
 
 jobs:
   test:
