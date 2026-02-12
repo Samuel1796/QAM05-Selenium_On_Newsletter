@@ -11,100 +11,60 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     strategy:
       matrix:
         java-version: ['11', '17']
-    
+
     steps:
-    # Checkout code
     - name: Checkout Code
       uses: actions/checkout@v3
       with:
         fetch-depth: 0
 
-    # Set up Java environment
+    - name: Display Trigger Source
+      run: |
+        echo "=== Trigger Information ==="
+        echo "Event Type: ${{ github.event_name }}"
+        echo "Source Repository: ${{ github.event.client_payload.repository || github.repository }}"
+        echo "Source Branch: ${{ github.event.client_payload.branch || github.ref_name }}"
+        echo "Commit SHA: ${{ github.event.client_payload.commit_sha || github.sha }}"
+        echo "Triggered By: ${{ github.event.client_payload.author || github.actor }}"
+
     - name: Set up JDK ${{ matrix.java-version }}
       uses: actions/setup-java@v3
       with:
         java-version: ${{ matrix.java-version }}
-        distribution: 'temurin'
+        distribution: temurin
         cache: maven
 
-    # Display environment info
     - name: Display Environment Information
       run: |
-        echo "=== Build Environment ==="
         java -version
         mvn -version
-        echo "=== Project Structure ==="
         ls -la
-        echo "=== Trigger Information ==="
-        echo "Event: ${{ github.event_name }}"
-        if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
-          echo "Triggered by: Newsletter repository update"
-          echo "Source Branch: ${{ github.event.client_payload.branch }}"
-          echo "Source Commit: ${{ github.event.client_payload.commit_sha }}"
-          echo "Source Author: ${{ github.event.client_payload.author }}"
-        fi
 
-    # Install dependencies
     - name: Install Dependencies
       run: mvn clean install -DskipTests
       env:
         CI: true
 
-    # Run Unit Tests
-    - name: Run Tests
-      id: run_tests
+    - name: Run Selenium Tests
       run: mvn test -B -V
       env:
         CI: true
       continue-on-error: true
 
-    # Generate Test Report Summary
     - name: Test Report Summary
-      id: test_summary
       if: always()
       run: |
-        echo "=== Test Execution Summary ==="
+        echo "=== Test Summary ==="
         if [ -d target/surefire-reports ]; then
-          echo "Test Reports Found:"
-          ls -la target/surefire-reports/
-          echo ""
-          
-          # Count test results
-          TOTAL_TESTS=0
-          FAILED_TESTS=0
-          PASSED_TESTS=0
-          
-          if ls target/surefire-reports/*.xml 1> /dev/null 2>&1; then
-            TOTAL_TESTS=$(grep -h "tests=" target/surefire-reports/*.xml | sed 's/.*tests="\([0-9]*\)".*/\1/' | awk '{s+=$1} END {print s}')
-            FAILED_TESTS=$(grep -h "failures=" target/surefire-reports/*.xml | sed 's/.*failures="\([0-9]*\)".*/\1/' | awk '{s+=$1} END {print s}')
-            PASSED_TESTS=$((TOTAL_TESTS - FAILED_TESTS))
-          fi
-          
-          echo "total_tests=$TOTAL_TESTS" >> $GITHUB_OUTPUT
-          echo "failed_tests=$FAILED_TESTS" >> $GITHUB_OUTPUT
-          echo "passed_tests=$PASSED_TESTS" >> $GITHUB_OUTPUT
-          
-          echo "Total Tests: $TOTAL_TESTS"
-          echo "Passed: $PASSED_TESTS"
-          echo "Failed: $FAILED_TESTS"
-          
-          if [ -f target/surefire-reports/*.txt ]; then
-            echo ""
-            echo "Test Results:"
-            cat target/surefire-reports/*.txt 2>/dev/null || echo "No text reports found"
-          fi
+          ls -la target/surefire-reports
         else
-          echo "No test reports directory found"
-          echo "total_tests=0" >> $GITHUB_OUTPUT
-          echo "failed_tests=0" >> $GITHUB_OUTPUT
-          echo "passed_tests=0" >> $GITHUB_OUTPUT
+          echo "No reports generated"
         fi
 
-    # Upload Test Results as Artifacts
     - name: Upload Test Reports
       if: always()
       uses: actions/upload-artifact@v3
@@ -113,38 +73,16 @@ jobs:
         path: target/surefire-reports/
         retention-days: 30
 
-    # Upload Test Screenshots (if available)
-    - name: Upload Test Screenshots
+    - name: Upload Screenshots
       if: always()
       uses: actions/upload-artifact@v3
       with:
-        name: test-screenshots-java-${{ matrix.java-version }}
+        name: screenshots-java-${{ matrix.java-version }}
         path: target/**/*.png
         retention-days: 30
       continue-on-error: true
 
-    # Determine source information
-    - name: Set Source Info
-      id: source_info
-      if: always()
-      run: |
-        if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
-          echo "source_repo=${{ github.event.client_payload.repository }}" >> $GITHUB_OUTPUT
-          echo "source_branch=${{ github.event.client_payload.branch }}" >> $GITHUB_OUTPUT
-          echo "source_commit=${{ github.event.client_payload.commit_sha }}" >> $GITHUB_OUTPUT
-          echo "source_author=${{ github.event.client_payload.author }}" >> $GITHUB_OUTPUT
-          echo "source_message=${{ github.event.client_payload.commit_message }}" >> $GITHUB_OUTPUT
-          echo "trigger_type=Newsletter Update" >> $GITHUB_OUTPUT
-        else
-          echo "source_repo=${{ github.repository }}" >> $GITHUB_OUTPUT
-          echo "source_branch=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-          echo "source_commit=${{ github.sha }}" >> $GITHUB_OUTPUT
-          echo "source_author=${{ github.actor }}" >> $GITHUB_OUTPUT
-          echo "source_message=${{ github.event.head_commit.message }}" >> $GITHUB_OUTPUT
-          echo "trigger_type=Direct Commit" >> $GITHUB_OUTPUT
-        fi
-
-    # Slack Notification - Success
+    # ================= SLACK SUCCESS =================
     - name: Slack Notification - Success
       if: success()
       uses: slackapi/slack-github-action@v1.24.0
@@ -156,69 +94,35 @@ jobs:
             "blocks": [
               {
                 "type": "header",
-                "text": {
-                  "type": "plain_text",
-                  "text": "✅ Selenium Tests Passed",
-                  "emoji": true
-                }
+                "text": { "type": "plain_text", "text": "✅ Selenium CI Passed", "emoji": true }
               },
               {
                 "type": "section",
                 "fields": [
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Test Repository:*\n${{ github.repository }}"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Source Repository:*\n${{ steps.source_info.outputs.source_repo }}"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Branch:*\n${{ steps.source_info.outputs.source_branch }}"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Author:*\n${{ steps.source_info.outputs.source_author }}"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Java Version:*\n${{ matrix.java-version }}"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Trigger Type:*\n${{ steps.source_info.outputs.trigger_type }}"
-                  }
+                  { "type": "mrkdwn", "text": "*Source Repo:*\n${{ github.event.client_payload.repository || github.repository }}" },
+                  { "type": "mrkdwn", "text": "*Branch:*\n${{ github.event.client_payload.branch || github.ref_name }}" },
+                  { "type": "mrkdwn", "text": "*Java:*\n${{ matrix.java-version }}" },
+                  { "type": "mrkdwn", "text": "*Author:*\n${{ github.event.client_payload.author || github.actor }}" }
                 ]
               },
               {
                 "type": "section",
                 "text": {
                   "type": "mrkdwn",
-                  "text": "*Test Results:*\n✅ Passed: ${{ steps.test_summary.outputs.passed_tests }}\n❌ Failed: ${{ steps.test_summary.outputs.failed_tests }}\n📊 Total: ${{ steps.test_summary.outputs.total_tests }}"
+                  "text": "*Commit Message:*\n```${{ github.event.client_payload.commit_message || 'Triggered via repository dispatch' }}```"
                 }
               },
               {
                 "type": "section",
                 "text": {
                   "type": "mrkdwn",
-                  "text": "*Commit Message:*\n```${{ steps.source_info.outputs.source_message }}```"
+                  "text": "*Workflow Run:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>"
                 }
-              },
-              {
-                "type": "section",
-                "text": {
-                  "type": "mrkdwn",
-                  "text": "*Workflow Run:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Test Run>"
-                }
-              },
-              {
-                "type": "divider"
               }
             ]
           }
 
-    # Slack Notification - Failure
+    # ================= SLACK FAILURE =================
     - name: Slack Notification - Failure
       if: failure()
       uses: slackapi/slack-github-action@v1.24.0
@@ -230,82 +134,30 @@ jobs:
             "blocks": [
               {
                 "type": "header",
-                "text": {
-                  "type": "plain_text",
-                  "text": "❌ Selenium Tests Failed",
-                  "emoji": true
-                }
+                "text": { "type": "plain_text", "text": "❌ Selenium CI Failed", "emoji": true }
               },
               {
                 "type": "section",
                 "fields": [
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Test Repository:*\n${{ github.repository }}"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Source Repository:*\n${{ steps.source_info.outputs.source_repo }}"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Branch:*\n${{ steps.source_info.outputs.source_branch }}"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Author:*\n${{ steps.source_info.outputs.source_author }}"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Java Version:*\n${{ matrix.java-version }}"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Trigger Type:*\n${{ steps.source_info.outputs.trigger_type }}"
-                  }
+                  { "type": "mrkdwn", "text": "*Source Repo:*\n${{ github.event.client_payload.repository || github.repository }}" },
+                  { "type": "mrkdwn", "text": "*Branch:*\n${{ github.event.client_payload.branch || github.ref_name }}" },
+                  { "type": "mrkdwn", "text": "*Java:*\n${{ matrix.java-version }}" },
+                  { "type": "mrkdwn", "text": "*Author:*\n${{ github.event.client_payload.author || github.actor }}" }
                 ]
               },
               {
                 "type": "section",
                 "text": {
                   "type": "mrkdwn",
-                  "text": "*Test Results:*\n✅ Passed: ${{ steps.test_summary.outputs.passed_tests }}\n❌ Failed: ${{ steps.test_summary.outputs.failed_tests }}\n📊 Total: ${{ steps.test_summary.outputs.total_tests }}"
+                  "text": "*Failure Reason:*\nTests failed. Please review logs.\n\n*Commit Message:*\n```${{ github.event.client_payload.commit_message || 'Triggered via repository dispatch' }}```"
                 }
-              },
-              {
-                "type": "section",
-                "text": {
-                  "type": "mrkdwn",
-                  "text": "⚠️ *Action Required:* Tests failed. Please review the logs and fix the issues.\n\n*Commit Message:*\n```${{ steps.source_info.outputs.source_message }}```"
-                }
-              },
-              {
-                "type": "section",
-                "text": {
-                  "type": "mrkdwn",
-                  "text": "*Workflow Run:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Test Run>"
-                }
-              },
-              {
-                "type": "divider"
               }
             ]
           }
 
-    # Display Final Status
     - name: Final Status
       if: always()
       run: |
-        echo "=== CI Pipeline Execution Complete ==="
+        echo "CI Finished"
         echo "Status: ${{ job.status }}"
-        echo "Java Version: ${{ matrix.java-version }}"
-        echo "Test Repository: ${{ github.repository }}"
-        echo "Source Repository: ${{ steps.source_info.outputs.source_repo }}"
-        echo "Branch: ${{ steps.source_info.outputs.source_branch }}"
-        echo "Commit: ${{ steps.source_info.outputs.source_commit }}"
-        echo "Author: ${{ steps.source_info.outputs.source_author }}"
-        echo "Trigger Type: ${{ steps.source_info.outputs.trigger_type }}"
-        echo "Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-        echo "Tests Passed: ${{ steps.test_summary.outputs.passed_tests }}"
-        echo "Tests Failed: ${{ steps.test_summary.outputs.failed_tests }}"
-        echo "Total Tests: ${{ steps.test_summary.outputs.total_tests }}"
+        echo "Java: ${{ matrix.java-version }}"
