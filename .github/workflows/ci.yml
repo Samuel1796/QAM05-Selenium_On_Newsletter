@@ -1,0 +1,219 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        java-version: ['11', '17']
+    
+    steps:
+    # Checkout code
+    - name: Checkout Code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    # Set up Java environment
+    - name: Set up JDK ${{ matrix.java-version }}
+      uses: actions/setup-java@v3
+      with:
+        java-version: ${{ matrix.java-version }}
+        distribution: 'temurin'
+        cache: maven
+
+    # Display environment info
+    - name: Display Environment Information
+      run: |
+        echo "=== Build Environment ==="
+        java -version
+        mvn -version
+        echo "=== Project Structure ==="
+        ls -la
+
+    # Install dependencies
+    - name: Install Dependencies
+      run: mvn clean install -DskipTests
+      env:
+        CI: true
+
+    # Run Unit Tests
+    - name: Run Tests
+      run: mvn test -B -V
+      env:
+        CI: true
+      continue-on-error: true
+
+    # Generate Test Report Summary
+    - name: Test Report Summary
+      if: always()
+      run: |
+        echo "=== Test Execution Summary ==="
+        if [ -d target/surefire-reports ]; then
+          echo "Test Reports Found:"
+          ls -la target/surefire-reports/
+          echo ""
+          echo "Test Results:"
+          cat target/surefire-reports/*.txt 2>/dev/null || echo "No text reports found"
+        else
+          echo "No test reports directory found"
+        fi
+
+    # Upload Test Results as Artifacts
+    - name: Upload Test Reports
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-reports-java-${{ matrix.java-version }}
+        path: target/surefire-reports/
+        retention-days: 30
+
+    # Upload Test Screenshots (if available)
+    - name: Upload Test Screenshots
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-screenshots-java-${{ matrix.java-version }}
+        path: target/**/*.png
+        retention-days: 30
+      continue-on-error: true
+
+    # Slack Notification - Success
+    - name: Slack Notification - Success
+      if: success()
+      uses: slackapi/slack-github-action@v1.24.0
+      with:
+        webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+        payload: |
+          {
+            "text": "✅ CI Pipeline Passed",
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "✅ Build Success",
+                  "emoji": true
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Repository:*\n${{ github.repository }}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Branch:*\n${{ github.ref_name }}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Commit:*\n<${{ github.event.head_commit.url }}|${{ github.sha }}>"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Author:*\n${{ github.actor }}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Java Version:*\n${{ matrix.java-version }}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Workflow Run:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>"
+                  }
+                ]
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*Message:*\n```${{ github.event.head_commit.message }}```"
+                }
+              },
+              {
+                "type": "divider"
+              }
+            ]
+          }
+
+    # Slack Notification - Failure
+    - name: Slack Notification - Failure
+      if: failure()
+      uses: slackapi/slack-github-action@v1.24.0
+      with:
+        webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+        payload: |
+          {
+            "text": "❌ CI Pipeline Failed",
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "❌ Build Failed",
+                  "emoji": true
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Repository:*\n${{ github.repository }}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Branch:*\n${{ github.ref_name }}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Commit:*\n<${{ github.event.head_commit.url }}|${{ github.sha }}>"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Author:*\n${{ github.actor }}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Java Version:*\n${{ matrix.java-version }}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Workflow Run:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>"
+                  }
+                ]
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*Action Required:* Tests failed. Please review the logs and fix the issues.\n\n*Message:*\n```${{ github.event.head_commit.message }}```"
+                }
+              },
+              {
+                "type": "divider"
+              }
+            ]
+          }
+
+    # Display Final Status
+    - name: Final Status
+      if: always()
+      run: |
+        echo "=== CI Pipeline Execution Complete ==="
+        echo "Status: ${{ job.status }}"
+        echo "Java Version: ${{ matrix.java-version }}"
+        echo "Repository: ${{ github.repository }}"
+        echo "Branch: ${{ github.ref_name }}"
+        echo "Commit: ${{ github.sha }}"
+        echo "Author: ${{ github.actor }}"
+        echo "Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
