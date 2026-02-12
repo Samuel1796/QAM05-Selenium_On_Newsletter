@@ -39,6 +39,14 @@ jobs:
         mvn -version
         echo "=== Project Structure ==="
         ls -la
+        echo "=== Trigger Information ==="
+        echo "Event: ${{ github.event_name }}"
+        if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+          echo "Triggered by: Newsletter repository update"
+          echo "Source Branch: ${{ github.event.client_payload.branch }}"
+          echo "Source Commit: ${{ github.event.client_payload.commit_sha }}"
+          echo "Source Author: ${{ github.event.client_payload.author }}"
+        fi
 
     # Install dependencies
     - name: Install Dependencies
@@ -48,6 +56,7 @@ jobs:
 
     # Run Unit Tests
     - name: Run Tests
+      id: run_tests
       run: mvn test -B -V
       env:
         CI: true
@@ -55,6 +64,7 @@ jobs:
 
     # Generate Test Report Summary
     - name: Test Report Summary
+      id: test_summary
       if: always()
       run: |
         echo "=== Test Execution Summary ==="
@@ -62,10 +72,36 @@ jobs:
           echo "Test Reports Found:"
           ls -la target/surefire-reports/
           echo ""
-          echo "Test Results:"
-          cat target/surefire-reports/*.txt 2>/dev/null || echo "No text reports found"
+          
+          # Count test results
+          TOTAL_TESTS=0
+          FAILED_TESTS=0
+          PASSED_TESTS=0
+          
+          if ls target/surefire-reports/*.xml 1> /dev/null 2>&1; then
+            TOTAL_TESTS=$(grep -h "tests=" target/surefire-reports/*.xml | sed 's/.*tests="\([0-9]*\)".*/\1/' | awk '{s+=$1} END {print s}')
+            FAILED_TESTS=$(grep -h "failures=" target/surefire-reports/*.xml | sed 's/.*failures="\([0-9]*\)".*/\1/' | awk '{s+=$1} END {print s}')
+            PASSED_TESTS=$((TOTAL_TESTS - FAILED_TESTS))
+          fi
+          
+          echo "total_tests=$TOTAL_TESTS" >> $GITHUB_OUTPUT
+          echo "failed_tests=$FAILED_TESTS" >> $GITHUB_OUTPUT
+          echo "passed_tests=$PASSED_TESTS" >> $GITHUB_OUTPUT
+          
+          echo "Total Tests: $TOTAL_TESTS"
+          echo "Passed: $PASSED_TESTS"
+          echo "Failed: $FAILED_TESTS"
+          
+          if [ -f target/surefire-reports/*.txt ]; then
+            echo ""
+            echo "Test Results:"
+            cat target/surefire-reports/*.txt 2>/dev/null || echo "No text reports found"
+          fi
         else
           echo "No test reports directory found"
+          echo "total_tests=0" >> $GITHUB_OUTPUT
+          echo "failed_tests=0" >> $GITHUB_OUTPUT
+          echo "passed_tests=0" >> $GITHUB_OUTPUT
         fi
 
     # Upload Test Results as Artifacts
@@ -87,6 +123,27 @@ jobs:
         retention-days: 30
       continue-on-error: true
 
+    # Determine source information
+    - name: Set Source Info
+      id: source_info
+      if: always()
+      run: |
+        if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+          echo "source_repo=${{ github.event.client_payload.repository }}" >> $GITHUB_OUTPUT
+          echo "source_branch=${{ github.event.client_payload.branch }}" >> $GITHUB_OUTPUT
+          echo "source_commit=${{ github.event.client_payload.commit_sha }}" >> $GITHUB_OUTPUT
+          echo "source_author=${{ github.event.client_payload.author }}" >> $GITHUB_OUTPUT
+          echo "source_message=${{ github.event.client_payload.commit_message }}" >> $GITHUB_OUTPUT
+          echo "trigger_type=Newsletter Update" >> $GITHUB_OUTPUT
+        else
+          echo "source_repo=${{ github.repository }}" >> $GITHUB_OUTPUT
+          echo "source_branch=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          echo "source_commit=${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "source_author=${{ github.actor }}" >> $GITHUB_OUTPUT
+          echo "source_message=${{ github.event.head_commit.message }}" >> $GITHUB_OUTPUT
+          echo "trigger_type=Direct Commit" >> $GITHUB_OUTPUT
+        fi
+
     # Slack Notification - Success
     - name: Slack Notification - Success
       if: success()
@@ -95,13 +152,13 @@ jobs:
         webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
         payload: |
           {
-            "text": "✅ CI Pipeline Passed",
+            "text": "✅ Selenium Tests Passed",
             "blocks": [
               {
                 "type": "header",
                 "text": {
                   "type": "plain_text",
-                  "text": "✅ Build Success",
+                  "text": "✅ Selenium Tests Passed",
                   "emoji": true
                 }
               },
@@ -110,19 +167,19 @@ jobs:
                 "fields": [
                   {
                     "type": "mrkdwn",
-                    "text": "*Repository:*\n${{ github.repository }}"
+                    "text": "*Test Repository:*\n${{ github.repository }}"
                   },
                   {
                     "type": "mrkdwn",
-                    "text": "*Branch:*\n${{ github.ref_name }}"
+                    "text": "*Source Repository:*\n${{ steps.source_info.outputs.source_repo }}"
                   },
                   {
                     "type": "mrkdwn",
-                    "text": "*Commit:*\n<${{ github.event.head_commit.url }}|${{ github.sha }}>"
+                    "text": "*Branch:*\n${{ steps.source_info.outputs.source_branch }}"
                   },
                   {
                     "type": "mrkdwn",
-                    "text": "*Author:*\n${{ github.actor }}"
+                    "text": "*Author:*\n${{ steps.source_info.outputs.source_author }}"
                   },
                   {
                     "type": "mrkdwn",
@@ -130,7 +187,7 @@ jobs:
                   },
                   {
                     "type": "mrkdwn",
-                    "text": "*Workflow Run:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>"
+                    "text": "*Trigger Type:*\n${{ steps.source_info.outputs.trigger_type }}"
                   }
                 ]
               },
@@ -138,7 +195,21 @@ jobs:
                 "type": "section",
                 "text": {
                   "type": "mrkdwn",
-                  "text": "*Message:*\n```${{ github.event.head_commit.message }}```"
+                  "text": "*Test Results:*\n✅ Passed: ${{ steps.test_summary.outputs.passed_tests }}\n❌ Failed: ${{ steps.test_summary.outputs.failed_tests }}\n📊 Total: ${{ steps.test_summary.outputs.total_tests }}"
+                }
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*Commit Message:*\n```${{ steps.source_info.outputs.source_message }}```"
+                }
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*Workflow Run:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Test Run>"
                 }
               },
               {
@@ -155,13 +226,13 @@ jobs:
         webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
         payload: |
           {
-            "text": "❌ CI Pipeline Failed",
+            "text": "❌ Selenium Tests Failed",
             "blocks": [
               {
                 "type": "header",
                 "text": {
                   "type": "plain_text",
-                  "text": "❌ Build Failed",
+                  "text": "❌ Selenium Tests Failed",
                   "emoji": true
                 }
               },
@@ -170,19 +241,19 @@ jobs:
                 "fields": [
                   {
                     "type": "mrkdwn",
-                    "text": "*Repository:*\n${{ github.repository }}"
+                    "text": "*Test Repository:*\n${{ github.repository }}"
                   },
                   {
                     "type": "mrkdwn",
-                    "text": "*Branch:*\n${{ github.ref_name }}"
+                    "text": "*Source Repository:*\n${{ steps.source_info.outputs.source_repo }}"
                   },
                   {
                     "type": "mrkdwn",
-                    "text": "*Commit:*\n<${{ github.event.head_commit.url }}|${{ github.sha }}>"
+                    "text": "*Branch:*\n${{ steps.source_info.outputs.source_branch }}"
                   },
                   {
                     "type": "mrkdwn",
-                    "text": "*Author:*\n${{ github.actor }}"
+                    "text": "*Author:*\n${{ steps.source_info.outputs.source_author }}"
                   },
                   {
                     "type": "mrkdwn",
@@ -190,7 +261,7 @@ jobs:
                   },
                   {
                     "type": "mrkdwn",
-                    "text": "*Workflow Run:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>"
+                    "text": "*Trigger Type:*\n${{ steps.source_info.outputs.trigger_type }}"
                   }
                 ]
               },
@@ -198,7 +269,21 @@ jobs:
                 "type": "section",
                 "text": {
                   "type": "mrkdwn",
-                  "text": "*Action Required:* Tests failed. Please review the logs and fix the issues.\n\n*Message:*\n```${{ github.event.head_commit.message }}```"
+                  "text": "*Test Results:*\n✅ Passed: ${{ steps.test_summary.outputs.passed_tests }}\n❌ Failed: ${{ steps.test_summary.outputs.failed_tests }}\n📊 Total: ${{ steps.test_summary.outputs.total_tests }}"
+                }
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "⚠️ *Action Required:* Tests failed. Please review the logs and fix the issues.\n\n*Commit Message:*\n```${{ steps.source_info.outputs.source_message }}```"
+                }
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*Workflow Run:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Test Run>"
                 }
               },
               {
@@ -214,8 +299,13 @@ jobs:
         echo "=== CI Pipeline Execution Complete ==="
         echo "Status: ${{ job.status }}"
         echo "Java Version: ${{ matrix.java-version }}"
-        echo "Repository: ${{ github.repository }}"
-        echo "Branch: ${{ github.ref_name }}"
-        echo "Commit: ${{ github.sha }}"
-        echo "Author: ${{ github.actor }}"
+        echo "Test Repository: ${{ github.repository }}"
+        echo "Source Repository: ${{ steps.source_info.outputs.source_repo }}"
+        echo "Branch: ${{ steps.source_info.outputs.source_branch }}"
+        echo "Commit: ${{ steps.source_info.outputs.source_commit }}"
+        echo "Author: ${{ steps.source_info.outputs.source_author }}"
+        echo "Trigger Type: ${{ steps.source_info.outputs.trigger_type }}"
         echo "Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        echo "Tests Passed: ${{ steps.test_summary.outputs.passed_tests }}"
+        echo "Tests Failed: ${{ steps.test_summary.outputs.failed_tests }}"
+        echo "Total Tests: ${{ steps.test_summary.outputs.total_tests }}"
