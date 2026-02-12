@@ -1,163 +1,148 @@
-name: CI Pipeline
+name: Selenium CI Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ master ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ master ]
   repository_dispatch:
     types: [ newsletter-update ]
+  workflow_dispatch:
 
 jobs:
-  test:
+  selenium-tests:
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
-        java-version: ['11', '17']
+        java-version: [ '11', '17' ]
 
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
-    - name: Display Trigger Source
-      run: |
-        echo "=== Trigger Information ==="
-        echo "Event Type: ${{ github.event_name }}"
-        echo "Source Repository: ${{ github.event.client_payload.repository || github.repository }}"
-        echo "Source Branch: ${{ github.event.client_payload.branch || github.ref_name }}"
-        echo "Commit SHA: ${{ github.event.client_payload.commit_sha || github.sha }}"
-        echo "Triggered By: ${{ github.event.client_payload.author || github.actor }}"
+      - name: Show Trigger Information
+        run: |
+          echo "=== Trigger Info ==="
+          echo "Event: ${{ github.event_name }}"
+          echo "Source Repo: ${{ github.event.client_payload.source_repository || github.repository }}"
+          echo "Branch: ${{ github.event.client_payload.branch || github.ref_name }}"
+          echo "Author: ${{ github.event.client_payload.author || github.actor }}"
+          echo "Commit SHA: ${{ github.event.client_payload.commit_sha || github.sha }}"
 
-    - name: Set up JDK ${{ matrix.java-version }}
-      uses: actions/setup-java@v3
-      with:
-        java-version: ${{ matrix.java-version }}
-        distribution: temurin
-        cache: maven
+      - name: Set up Java ${{ matrix.java-version }}
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: temurin
+          cache: maven
 
-    - name: Display Environment Information
-      run: |
-        java -version
-        mvn -version
-        ls -la
+      - name: Install Dependencies
+        run: mvn clean install -DskipTests
+        env:
+          CI: true
 
-    - name: Install Dependencies
-      run: mvn clean install -DskipTests
-      env:
-        CI: true
+      - name: Run Selenium Tests
+        run: mvn test -B -V
+        env:
+          CI: true
+        continue-on-error: true
 
-    - name: Run Selenium Tests
-      run: mvn test -B -V
-      env:
-        CI: true
-      continue-on-error: true
+      - name: Upload Test Reports
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-reports-java-${{ matrix.java-version }}
+          path: target/surefire-reports/
+          retention-days: 30
 
-    - name: Test Report Summary
-      if: always()
-      run: |
-        echo "=== Test Summary ==="
-        if [ -d target/surefire-reports ]; then
-          ls -la target/surefire-reports
-        else
-          echo "No reports generated"
-        fi
+      - name: Upload Screenshots
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: screenshots-java-${{ matrix.java-version }}
+          path: target/**/*.png
+          retention-days: 30
+        continue-on-error: true
 
-    - name: Upload Test Reports
-      if: always()
-      uses: actions/upload-artifact@v3
-      with:
-        name: test-reports-java-${{ matrix.java-version }}
-        path: target/surefire-reports/
-        retention-days: 30
-
-    - name: Upload Screenshots
-      if: always()
-      uses: actions/upload-artifact@v3
-      with:
-        name: screenshots-java-${{ matrix.java-version }}
-        path: target/**/*.png
-        retention-days: 30
-      continue-on-error: true
-
-    # ================= SLACK SUCCESS =================
-    - name: Slack Notification - Success
-      if: success()
-      uses: slackapi/slack-github-action@v1.24.0
-      with:
-        webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
-        payload: |
-          {
-            "text": "✅ Selenium Tests Passed",
-            "blocks": [
-              {
-                "type": "header",
-                "text": { "type": "plain_text", "text": "✅ Selenium CI Passed", "emoji": true }
-              },
-              {
-                "type": "section",
-                "fields": [
-                  { "type": "mrkdwn", "text": "*Source Repo:*\n${{ github.event.client_payload.repository || github.repository }}" },
-                  { "type": "mrkdwn", "text": "*Branch:*\n${{ github.event.client_payload.branch || github.ref_name }}" },
-                  { "type": "mrkdwn", "text": "*Java:*\n${{ matrix.java-version }}" },
-                  { "type": "mrkdwn", "text": "*Author:*\n${{ github.event.client_payload.author || github.actor }}" }
-                ]
-              },
-              {
-                "type": "section",
-                "text": {
-                  "type": "mrkdwn",
-                  "text": "*Commit Message:*\n```${{ github.event.client_payload.commit_message || 'Triggered via repository dispatch' }}```"
+      # ========= SLACK SUCCESS =========
+      - name: Slack Notification - Success
+        if: success()
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "✅ Selenium Tests Passed",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": { "type": "plain_text", "text": "✅ Selenium Tests Passed", "emoji": true }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    { "type": "mrkdwn", "text": "*Source Repo:*\n${{ github.event.client_payload.source_repository || github.repository }}" },
+                    { "type": "mrkdwn", "text": "*Branch:*\n${{ github.event.client_payload.branch || github.ref_name }}" },
+                    { "type": "mrkdwn", "text": "*Java:*\n${{ matrix.java-version }}" },
+                    { "type": "mrkdwn", "text": "*Author:*\n${{ github.event.client_payload.author || github.actor }}" }
+                  ]
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Commit Message:*\n```${{ github.event.client_payload.commit_message || 'Triggered via repository dispatch' }}```"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Workflow Run:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>"
+                  }
                 }
-              },
-              {
-                "type": "section",
-                "text": {
-                  "type": "mrkdwn",
-                  "text": "*Workflow Run:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>"
-                }
-              }
-            ]
-          }
+              ]
+            }
 
-    # ================= SLACK FAILURE =================
-    - name: Slack Notification - Failure
-      if: failure()
-      uses: slackapi/slack-github-action@v1.24.0
-      with:
-        webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
-        payload: |
-          {
-            "text": "❌ Selenium Tests Failed",
-            "blocks": [
-              {
-                "type": "header",
-                "text": { "type": "plain_text", "text": "❌ Selenium CI Failed", "emoji": true }
-              },
-              {
-                "type": "section",
-                "fields": [
-                  { "type": "mrkdwn", "text": "*Source Repo:*\n${{ github.event.client_payload.repository || github.repository }}" },
-                  { "type": "mrkdwn", "text": "*Branch:*\n${{ github.event.client_payload.branch || github.ref_name }}" },
-                  { "type": "mrkdwn", "text": "*Java:*\n${{ matrix.java-version }}" },
-                  { "type": "mrkdwn", "text": "*Author:*\n${{ github.event.client_payload.author || github.actor }}" }
-                ]
-              },
-              {
-                "type": "section",
-                "text": {
-                  "type": "mrkdwn",
-                  "text": "*Failure Reason:*\nTests failed. Please review logs.\n\n*Commit Message:*\n```${{ github.event.client_payload.commit_message || 'Triggered via repository dispatch' }}```"
+      # ========= SLACK FAILURE =========
+      - name: Slack Notification - Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "❌ Selenium Tests Failed",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": { "type": "plain_text", "text": "❌ Selenium Tests Failed", "emoji": true }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    { "type": "mrkdwn", "text": "*Source Repo:*\n${{ github.event.client_payload.source_repository || github.repository }}" },
+                    { "type": "mrkdwn", "text": "*Branch:*\n${{ github.event.client_payload.branch || github.ref_name }}" },
+                    { "type": "mrkdwn", "text": "*Java:*\n${{ matrix.java-version }}" },
+                    { "type": "mrkdwn", "text": "*Author:*\n${{ github.event.client_payload.author || github.actor }}" }
+                  ]
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Action Required:* Selenium tests failed.\n\n*Commit Message:*\n```${{ github.event.client_payload.commit_message || 'Triggered via repository dispatch' }}```"
+                  }
                 }
-              }
-            ]
-          }
+              ]
+            }
 
-    - name: Final Status
-      if: always()
-      run: |
-        echo "CI Finished"
-        echo "Status: ${{ job.status }}"
-        echo "Java: ${{ matrix.java-version }}"
+      - name: Final Status
+        if: always()
+        run: |
+          echo "=== CI Completed ==="
+          echo "Status: ${{ job.status }}"
+          echo "Java: ${{ matrix.java-version }}"
