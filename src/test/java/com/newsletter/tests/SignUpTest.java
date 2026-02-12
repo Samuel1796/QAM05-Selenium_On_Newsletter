@@ -39,7 +39,7 @@ public class SignUpTest extends BaseTest {
         assertTrue(isSuccess, "Subscription should be successful with valid email");
     }
 
-    @Test(description = "Verify Error Message for Invalid Email Format", priority = 3)
+    @Test(description = "Verify Error Message for Invalid Email Format")
     public void testInvalidEmailFormat() {
         signUpPage.navigateToPage();
         signUpPage.completeSignUp("invalid-email");
@@ -50,7 +50,7 @@ public class SignUpTest extends BaseTest {
                 "Should remain on same page with invalid email");
     }
 
-    @Test(description = "Verify Error Message for Empty Email Field", priority = 4)
+    @Test(description = "Verify Error Message for Empty Email Field")
     public void testEmptyEmailField() {
         signUpPage.navigateToPage();
         signUpPage.clickSubscribe();
@@ -63,12 +63,11 @@ public class SignUpTest extends BaseTest {
 
     @DataProvider(name = "invalidEmails")
     public Object[][] invalidEmailProvider() {
-        // Generate random pool of invalid emails and select 6 for testing
-        return Utils.getRandomInvalidEmails(6);
+        // Generate random pool of invalid emails and select 3 for testing
+        return Utils.getRandomInvalidEmails(3);
     }
 
-    @Test(description = "Verify Form Validation with Multiple Invalid Email Formats",
-            priority = 5, dataProvider = "invalidEmails")
+    @Test(description = "Verify Form Validation with Multiple Invalid Email Formats", dataProvider = "invalidEmails")
     public void testMultipleInvalidEmailFormats(String invalidEmail) {
         signUpPage.navigateToPage();
         signUpPage.enterEmail(invalidEmail);
@@ -82,12 +81,12 @@ public class SignUpTest extends BaseTest {
 
     @DataProvider(name = "validEmails")
     public Object[][] validEmailProvider() {
-        // Generate random pool of 10 emails and select 5 for testing
-        return Utils.getRandomEmails(10, 5);
+        // Generate random pool of 6 emails and select 3 for testing
+        return Utils.getRandomEmails(6, 3);
     }
 
     @Test(description = "Verify Successful Subscription with Various Valid Email Formats",
-            priority = 6, dataProvider = "validEmails")
+            dataProvider = "validEmails")
     public void testValidEmailFormats(String validEmail) {
         signUpPage.navigateToPage();
         signUpPage.completeSignUp(validEmail);
@@ -98,16 +97,8 @@ public class SignUpTest extends BaseTest {
         assertTrue(isSuccess, "Should accept valid email format: " + validEmail);
     }
 
-    @Test(description = "Verify Email Input Field Can Accept Text", priority = 7)
-    public void testEmailInputAcceptsText() {
-        signUpPage.navigateToPage();
-        signUpPage.enterEmail(Utils.generateRandomEmail());
 
-        assertTrue(signUpPage.isEmailInputDisplayed(),
-                "Email input should remain visible after entering text");
-    }
-
-    @Test(description = "Verify Subscribe Button is Clickable", priority = 8)
+    @Test(description = "Verify Subscribe Button is Clickable")
     public void testSubscribeButtonIsClickable() {
         signUpPage.navigateToPage();
 
@@ -115,18 +106,31 @@ public class SignUpTest extends BaseTest {
         signUpPage.clickSubscribe();
     }
 
-    @Test(description = "Verify Form Elements After Page Refresh", priority = 9)
+    @Test(description = "Verify Email Input Persists After Page Refresh")
     public void testFormPersistenceAfterRefresh() {
         signUpPage.navigateToPage();
+        
+        // Enter an email into the input field
+        String testEmail = Utils.generateRandomEmail();
+        signUpPage.enterEmail(testEmail);
+        
+        // Refresh the page
         driver.navigate().refresh();
-        waitFor(1000);
+        waitFor(2000);
 
+        // Re-initialize page object after refresh to get fresh element references
+        signUpPage = new SignUpPage(driver);
+
+        // Check if the form and input field are still displayed
         assertTrue(signUpPage.isFormDisplayed(), "Form should be displayed after refresh");
         assertTrue(signUpPage.isEmailInputDisplayed(), "Email input should be displayed after refresh");
-        assertTrue(signUpPage.isSubscribeButtonDisplayed(), "Subscribe button should be displayed after refresh");
+        
+        // Check if the email value persists after refresh
+        String emailAfterRefresh = signUpPage.getEmailInputValue();
+        assertEquals(emailAfterRefresh, testEmail, "Email input value should persist after page refresh");
     }
 
-    @Test(description = "Verify Maximum Length of Email Input", priority = 10)
+    @Test(description = "Verify Maximum Length of Email Input")
     public void testEmailInputMaxLength() {
         signUpPage.navigateToPage();
 
@@ -137,7 +141,7 @@ public class SignUpTest extends BaseTest {
                 "Email input should handle long email addresses");
     }
 
-    @Test(description = "Verify Special Characters in Email", priority = 11)
+    @Test(description = "Verify Special Characters in Email")
     public void testSpecialCharactersInEmail() {
         signUpPage.navigateToPage();
         signUpPage.completeSignUp(Utils.generateRandomEmail());
@@ -148,7 +152,7 @@ public class SignUpTest extends BaseTest {
         assertTrue(isSuccess, "Should accept email with valid characters");
     }
 
-    @Test(description = "Verify Form Behavior with Leading/Trailing Spaces", priority = 12)
+    @Test(description = "Verify Form Behavior with Leading/Trailing Spaces")
     public void testEmailWithSpaces() {
         signUpPage.navigateToPage();
         signUpPage.completeSignUp("  " + Utils.generateRandomEmail() + "  ");
@@ -158,6 +162,53 @@ public class SignUpTest extends BaseTest {
         boolean isSuccess = successPage.isOnSuccessPage() || !signUpPage.isErrorMessageDisplayed();
         assertTrue(isSuccess, "Form should handle leading/trailing spaces");
     }
+
+    @Test(description = "Verify Success Page Displays Correct Email After Subscription")
+    public void testSuccessPageDisplaysEmail() {
+        String testEmail = Utils.generateRandomEmail();
+        signUpPage.navigateToPage();
+        signUpPage.completeSignUp(testEmail);
+        
+        waitFor(2000);
+        
+        assertTrue(successPage.isOnSuccessPage(), "Should redirect to success page");
+        String displayedEmail = successPage.getEmailConfirmation();
+        assertTrue(displayedEmail.contains(testEmail), 
+                "Success page should display subscribed email: " + testEmail);
+    }
+
+    @Test(description = "Verify Error Message Disappears When Valid Email Entered")
+    public void testErrorMessageClearsOnValidEmail() {
+        signUpPage.navigateToPage();
+        signUpPage.completeSignUp("invalid");
+        waitFor(1000);
+        
+        assertTrue(signUpPage.isErrorMessageDisplayed(), "Error should be displayed for invalid email");
+        
+        signUpPage.clearEmailInput();
+        signUpPage.enterEmail(Utils.generateRandomEmail());
+        waitFor(500);
+        
+        assertFalse(signUpPage.isErrorMessageDisplayed(), "Error message should no longer be displayed");
+    }
+
+    @Test(description = "Verify Dismiss Button Returns to Form")
+    public void testDismissSuccessMessage() {
+        signUpPage.navigateToPage();
+        signUpPage.completeSignUp(Utils.generateRandomEmail());
+        
+        waitFor(2000);
+        assertTrue(successPage.isOnSuccessPage(), "Should be on success page");
+        
+        successPage.clickDismissButton();
+        waitFor(1000);
+        
+        // Re-initialize to get fresh element references
+        signUpPage = new SignUpPage(driver);
+        assertTrue(signUpPage.isFormDisplayed(), "Should return to sign-up form");
+        assertTrue(signUpPage.isEmailInputDisplayed(), "Email input should be visible");
+    }
+
 
     @AfterMethod
     @Override

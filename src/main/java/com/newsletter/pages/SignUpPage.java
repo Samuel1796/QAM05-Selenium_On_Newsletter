@@ -128,6 +128,13 @@ public class SignUpPage extends BasePage {
     }
 
     /**
+     * Get email input value
+     */
+    public String getEmailInputValue() {
+        return emailInput.getAttribute("value");
+    }
+
+    /**
      * Complete sign-up process
      */
     public void completeSignUp(String email) {

@@ -19,7 +19,7 @@ public class SuccessPage extends BasePage {
     @FindBy(id = "dismiss-btn")
     private WebElement dismissButton;
 
-    @FindBy(css = ".email-confirmation, [class*='email']")
+    @FindBy(id = "user-email")
     private WebElement emailConfirmation;
 
     /**
