@@ -50,17 +50,19 @@ jobs:
           CI: true
         continue-on-error: true
 
+      # ✅ UPDATED TO v4
       - name: Upload Test Reports
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: test-reports-java-${{ matrix.java-version }}
           path: target/surefire-reports/
           retention-days: 30
 
+      # ✅ UPDATED TO v4
       - name: Upload Screenshots
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: screenshots-java-${{ matrix.java-version }}
           path: target/**/*.png
