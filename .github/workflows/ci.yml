@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     strategy:
+      fail-fast: false   # 🔥 prevents matrix cancellation
       matrix:
         java-version: [ '11', '17' ]
 
@@ -29,32 +30,46 @@ jobs:
       - name: Install Dependencies
         run: mvn clean install -DskipTests
 
-      # 🔑 Capture test result
+      # 🔑 Run tests and capture exit code
       - name: Run Selenium Tests
         id: selenium_tests
-        run: mvn test
-        continue-on-error: true
+        run: |
+          mvn test || echo "TEST_FAILED=true" >> $GITHUB_ENV
 
-      # ✅ Always generate & upload report
+      # 🔍 Check report directory
+      - name: Check Test Reports
+        id: check_reports
+        run: |
+          if [ -d target/surefire-reports ]; then
+            echo "REPORTS_EXIST=true" >> $GITHUB_ENV
+          else
+            echo "REPORTS_EXIST=false" >> $GITHUB_ENV
+          fi
+
+      # 📦 Upload reports only if they exist
       - name: Upload Test Reports
-        if: always()
+        if: env.REPORTS_EXIST == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: selenium-reports-java-${{ matrix.java-version }}
           path: target/surefire-reports
           retention-days: 30
 
+      # 📸 Upload screenshots only if they exist
       - name: Upload Screenshots
         if: always()
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: selenium-screenshots-java-${{ matrix.java-version }}
-          path: target/**/*.png
+          path: |
+            target/**/*.png
+            screenshots/**/*.png
           retention-days: 30
 
-      # ✅ PASS → DM
+      # ✅ Slack PASS
       - name: Slack Notification - Success
-        if: steps.selenium_tests.outcome == 'success'
+        if: env.TEST_FAILED != 'true'
         uses: slackapi/slack-github-action@v1.24.0
         with:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -72,20 +87,13 @@ jobs:
                     "type": "mrkdwn",
                     "text": "*Repo:* ${{ github.repository }}\n*Branch:* ${{ github.ref_name }}\n*Java:* ${{ matrix.java-version }}"
                   }
-                },
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*Reports:*\nDownload from workflow artifacts"
-                  }
                 }
               ]
             }
 
-      # ❌ FAIL → DM
+      # ❌ Slack FAIL (your case)
       - name: Slack Notification - Failure
-        if: steps.selenium_tests.outcome == 'failure'
+        if: env.TEST_FAILED == 'true'
         uses: slackapi/slack-github-action@v1.24.0
         with:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -101,7 +109,7 @@ jobs:
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": "*Repo:* ${{ github.repository }}\n*Branch:* ${{ github.ref_name }}\n*Java:* ${{ matrix.java-version }}\n\nSome tests failed. Reports and screenshots are attached to the workflow."
+                    "text": "*Repo:* ${{ github.repository }}\n*Branch:* ${{ github.ref_name }}\n*Java:* ${{ matrix.java-version }}\n\nSome tests failed. Reports and screenshots (if any) are attached."
                   }
                 },
                 {
