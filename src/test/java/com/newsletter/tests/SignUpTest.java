@@ -134,7 +134,11 @@ public class SignUpTest extends BaseTest {
     public void testEmailInputMaxLength() {
         signUpPage.navigateToPage();
 
-        String longEmail = "a".repeat(100) + "@example.com";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 100; i++) {
+            sb.append('a');
+        }
+        String longEmail = sb.append("@example.com").toString();
         signUpPage.enterEmail(longEmail);
 
         assertTrue(signUpPage.isEmailInputDisplayed(),

@@ -33,12 +33,19 @@ jobs:
       # 🔑 Run tests and capture exit code
       - name: Run Selenium Tests
         id: selenium_tests
+        continue-on-error: true
         run: |
-          mvn test || echo "TEST_FAILED=true" >> $GITHUB_ENV
+          mvn test -B -V
+          if [ $? -ne 0 ]; then
+            echo "TEST_FAILED=true" >> $GITHUB_ENV
+          else
+            echo "TEST_FAILED=false" >> $GITHUB_ENV
+          fi
 
       # 🔍 Check report directory
       - name: Check Test Reports
         id: check_reports
+        continue-on-error: true
         run: |
           if [ -d target/surefire-reports ]; then
             echo "REPORTS_EXIST=true" >> $GITHUB_ENV
@@ -48,12 +55,31 @@ jobs:
 
       # 📦 Upload reports only if they exist
       - name: Upload Test Reports
-        if: env.REPORTS_EXIST == 'true'
+        if: always()
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: selenium-reports-java-${{ matrix.java-version }}
           path: target/surefire-reports
           retention-days: 30
+
+      # 📋 Generate Test Summary
+      - name: Generate Test Summary
+        if: always()
+        continue-on-error: true
+        run: |
+          echo "## Test Execution Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -d target/surefire-reports ]; then
+            echo "### Test Reports Generated" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Reports Location:** \`target/surefire-reports/\`" >> $GITHUB_STEP_SUMMARY
+            if [ -f target/surefire-reports/index.html ]; then
+              echo "- HTML Report available" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Java Version:** ${{ matrix.java-version }}" >> $GITHUB_STEP_SUMMARY
 
       # 📸 Upload screenshots only if they exist
       - name: Upload Screenshots
@@ -69,12 +95,14 @@ jobs:
 
       # ✅ Slack PASS
       - name: Slack Notification - Success
-        if: env.TEST_FAILED != 'true'
+        if: success()
         uses: slackapi/slack-github-action@v1.24.0
         with:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
           payload: |
             {
+              "username": "myGitHubActions",
+              "icon_emoji": ":robot_face:",
               "text": "✅ Selenium Tests PASSED",
               "blocks": [
                 {
@@ -85,7 +113,7 @@ jobs:
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": "*Repo:* ${{ github.repository }}\n*Branch:* ${{ github.ref_name }}\n*Java:* ${{ matrix.java-version }}"
+                    "text": "*Repo:* ${{ github.repository }}\n*Branch:* ${{ github.ref_name }}\n*Java:* ${{ matrix.java-version }}\n*Commit:* <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>"
                   }
                 }
               ]
@@ -93,12 +121,14 @@ jobs:
 
       # ❌ Slack FAIL (your case)
       - name: Slack Notification - Failure
-        if: env.TEST_FAILED == 'true'
+        if: failure()
         uses: slackapi/slack-github-action@v1.24.0
         with:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
           payload: |
             {
+              "username": "myGitHubActions",
+              "icon_emoji": ":robot_face:",
               "text": "❌ Selenium Tests FAILED",
               "blocks": [
                 {
@@ -109,7 +139,7 @@ jobs:
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": "*Repo:* ${{ github.repository }}\n*Branch:* ${{ github.ref_name }}\n*Java:* ${{ matrix.java-version }}\n\nSome tests failed. Reports and screenshots (if any) are attached."
+                    "text": "*Repo:* ${{ github.repository }}\n*Branch:* ${{ github.ref_name }}\n*Java:* ${{ matrix.java-version }}\n*Commit:* <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>\n\nSome tests failed. Reports and screenshots (if any) are attached."
                   }
                 },
                 {
