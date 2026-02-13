@@ -83,7 +83,8 @@ jobs:
             echo "📋 Individual Test Results:"
             echo "========================================="
           
-            # Parse each test file
+            # Parse each test file and create detailed results
+            DETAILED_RESULTS=""
             for file in target/surefire-reports/TEST-*.xml; do
               if [ -f "$file" ]; then
                 CLASS_NAME=$(grep -o 'name="[^"]*"' "$file" | head -1 | sed 's/name="//;s/"//')
@@ -91,37 +92,63 @@ jobs:
                 echo "📦 Test Class: $CLASS_NAME"
                 echo "---"
           
+                DETAILED_RESULTS="${DETAILED_RESULTS}*${CLASS_NAME}*\n"
+          
                 # Extract individual test cases
-                grep -A 5 '<testcase' "$file" | while IFS= read -r line; do
+                while IFS= read -r line; do
                   if [[ $line == *"<testcase"* ]]; then
                     TEST_NAME=$(echo "$line" | grep -o 'name="[^"]*"' | sed 's/name="//;s/"//')
                     TIME=$(echo "$line" | grep -o 'time="[^"]*"' | sed 's/time="//;s/"//')
           
-                    # Check if test failed
-                    read -r next_line
-                    if [[ $next_line == *"<failure"* ]] || [[ $next_line == *"<error"* ]]; then
+                    # Check next few lines for failure/error/skipped
+                    NEXT_LINES=$(grep -A 3 "name=\"$TEST_NAME\"" "$file")
+          
+                    if echo "$NEXT_LINES" | grep -q "<failure"; then
                       echo "  ❌ $TEST_NAME (${TIME}s) - FAILED"
-                    elif [[ $next_line == *"<skipped"* ]]; then
+                      DETAILED_RESULTS="${DETAILED_RESULTS}  ❌ \`$TEST_NAME\` (${TIME}s)\n"
+                    elif echo "$NEXT_LINES" | grep -q "<error"; then
+                      echo "  ⚠️  $TEST_NAME (${TIME}s) - ERROR"
+                      DETAILED_RESULTS="${DETAILED_RESULTS}  ⚠️  \`$TEST_NAME\` (${TIME}s)\n"
+                    elif echo "$NEXT_LINES" | grep -q "<skipped"; then
                       echo "  ⏭️  $TEST_NAME (${TIME}s) - SKIPPED"
+                      DETAILED_RESULTS="${DETAILED_RESULTS}  ⏭️  \`$TEST_NAME\` (${TIME}s)\n"
                     else
                       echo "  ✅ $TEST_NAME (${TIME}s) - PASSED"
+                      DETAILED_RESULTS="${DETAILED_RESULTS}  ✅ \`$TEST_NAME\` (${TIME}s)\n"
                     fi
                   fi
-                done
+                done < <(grep '<testcase' "$file")
+          
+                DETAILED_RESULTS="${DETAILED_RESULTS}\n"
               fi
             done
           
             echo ""
             echo "========================================="
           
-            # Save to env for Slack
+            # Save to env for Slack - escape for JSON
             echo "TOTAL_TESTS=$TOTAL_TESTS" >> $GITHUB_ENV
             echo "PASSED_TESTS=$PASSED" >> $GITHUB_ENV
             echo "FAILED_TESTS=$FAILURES" >> $GITHUB_ENV
             echo "ERROR_TESTS=$ERRORS" >> $GITHUB_ENV
             echo "SKIPPED_TESTS=$SKIPPED" >> $GITHUB_ENV
+          
+            # Save detailed results to file for Slack (avoid env var size limits)
+            echo -e "$DETAILED_RESULTS" > /tmp/test_details.txt
+          
+            # Create truncated version for Slack (Slack has message size limits)
+            if [ ${#DETAILED_RESULTS} -gt 2000 ]; then
+              echo -e "${DETAILED_RESULTS:0:2000}\n\n_...results truncated, see workflow logs for full details_" > /tmp/test_details_slack.txt
+            else
+              echo -e "$DETAILED_RESULTS" > /tmp/test_details_slack.txt
+            fi
           else
             echo "⚠️  No test reports found!"
+            echo "TOTAL_TESTS=0" >> $GITHUB_ENV
+            echo "PASSED_TESTS=0" >> $GITHUB_ENV
+            echo "FAILED_TESTS=0" >> $GITHUB_ENV
+            echo "ERROR_TESTS=0" >> $GITHUB_ENV
+            echo "SKIPPED_TESTS=0" >> $GITHUB_ENV
           fi
 
       # 📦 Upload reports only if they exist
@@ -168,21 +195,24 @@ jobs:
                 echo "#### $CLASS_NAME" >> $GITHUB_STEP_SUMMARY
                 echo "" >> $GITHUB_STEP_SUMMARY
           
-                grep -A 5 '<testcase' "$file" | while IFS= read -r line; do
+                while IFS= read -r line; do
                   if [[ $line == *"<testcase"* ]]; then
                     TEST_NAME=$(echo "$line" | grep -o 'name="[^"]*"' | sed 's/name="//;s/"//')
                     TIME=$(echo "$line" | grep -o 'time="[^"]*"' | sed 's/time="//;s/"//')
           
-                    read -r next_line
-                    if [[ $next_line == *"<failure"* ]] || [[ $next_line == *"<error"* ]]; then
+                    NEXT_LINES=$(grep -A 3 "name=\"$TEST_NAME\"" "$file")
+          
+                    if echo "$NEXT_LINES" | grep -q "<failure"; then
                       echo "- ❌ \`$TEST_NAME\` (${TIME}s)" >> $GITHUB_STEP_SUMMARY
-                    elif [[ $next_line == *"<skipped"* ]]; then
+                    elif echo "$NEXT_LINES" | grep -q "<error"; then
+                      echo "- ⚠️ \`$TEST_NAME\` (${TIME}s)" >> $GITHUB_STEP_SUMMARY
+                    elif echo "$NEXT_LINES" | grep -q "<skipped"; then
                       echo "- ⏭️ \`$TEST_NAME\` (${TIME}s)" >> $GITHUB_STEP_SUMMARY
                     else
                       echo "- ✅ \`$TEST_NAME\` (${TIME}s)" >> $GITHUB_STEP_SUMMARY
                     fi
                   fi
-                done
+                done < <(grep '<testcase' "$file")
           
                 echo "" >> $GITHUB_STEP_SUMMARY
               fi
@@ -203,6 +233,21 @@ jobs:
             screenshots/**/*.png
           retention-days: 30
 
+      # 📝 Prepare Slack Message with Details
+      - name: Prepare Slack Message
+        if: always()
+        continue-on-error: true
+        run: |
+          if [ -f /tmp/test_details_slack.txt ]; then
+            TEST_DETAILS=$(cat /tmp/test_details_slack.txt | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
+          else
+            TEST_DETAILS="No detailed results available"
+          fi
+          
+          echo "TEST_DETAILS<<EOF" >> $GITHUB_ENV
+          cat /tmp/test_details_slack.txt 2>/dev/null || echo "No test details available"
+          echo "EOF" >> $GITHUB_ENV
+
       # ✅ Slack PASS
       - name: Slack Notification - Success
         if: success()
@@ -214,7 +259,7 @@ jobs:
             {
               "username": "myGitHubActions",
               "icon_emoji": ":robot_face:",
-              "text": "✅ Selenium Tests PASSED",
+              "text": "✅ Selenium Tests PASSED - Java ${{ matrix.java-version }}",
               "blocks": [
                 {
                   "type": "header",
@@ -231,7 +276,24 @@ jobs:
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": "📊 *Test Results:*\n✅ Passed: ${{ env.PASSED_TESTS }}/${{ env.TOTAL_TESTS }}\n⏭️ Skipped: ${{ env.SKIPPED_TESTS }}"
+                    "text": "*📊 Test Summary:*\n✅ Passed: ${{ env.PASSED_TESTS }}/${{ env.TOTAL_TESTS }}\n⏭️ Skipped: ${{ env.SKIPPED_TESTS }}"
+                  }
+                },
+                {
+                  "type": "divider"
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*📋 Detailed Test Results:*\n${{ env.TEST_DETAILS }}"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Full Workflow Run>"
                   }
                 }
               ]
@@ -248,7 +310,7 @@ jobs:
             {
               "username": "myGitHubActions",
               "icon_emoji": ":robot_face:",
-              "text": "❌ Selenium Tests FAILED",
+              "text": "❌ Selenium Tests FAILED - Java ${{ matrix.java-version }}",
               "blocks": [
                 {
                   "type": "header",
@@ -265,14 +327,24 @@ jobs:
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": "📊 *Test Results:*\n✅ Passed: ${{ env.PASSED_TESTS }}\n❌ Failed: ${{ env.FAILED_TESTS }}\n⚠️ Errors: ${{ env.ERROR_TESTS }}\n⏭️ Skipped: ${{ env.SKIPPED_TESTS }}\n*Total:* ${{ env.TOTAL_TESTS }}"
+                    "text": "*📊 Test Summary:*\n✅ Passed: ${{ env.PASSED_TESTS }}\n❌ Failed: ${{ env.FAILED_TESTS }}\n⚠️ Errors: ${{ env.ERROR_TESTS }}\n⏭️ Skipped: ${{ env.SKIPPED_TESTS }}\n*Total:* ${{ env.TOTAL_TESTS }}"
+                  }
+                },
+                {
+                  "type": "divider"
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*📋 Detailed Test Results:*\n${{ env.TEST_DETAILS }}"
                   }
                 },
                 {
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": "*Workflow Run:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View details>"
+                    "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Full Workflow Run> | <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts|Download Reports & Screenshots>"
                   }
                 }
               ]
