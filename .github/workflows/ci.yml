@@ -93,52 +93,77 @@ jobs:
             screenshots/**/*.png
           retention-days: 30
 
-      # 📝 Capture test logs
-      - name: Capture Test Logs
-        if: always()
+      # 📝 Extract Test Logs
+      - name: Extract Test Logs
+        if: failure()
         continue-on-error: true
         run: |
           if [ -d target/surefire-reports ]; then
-            echo "TEST_SUMMARY<<EOF" >> $GITHUB_ENV
-            find target/surefire-reports -name "*.txt" -exec head -20 {} \; | head -100
+            echo "Extracting test failures..."
+            LOG_OUTPUT=$(find target/surefire-reports -name "*.txt" -type f -exec grep -l "FAILURE\|ERROR" {} \; | head -3 | xargs cat | head -50 | sed 's/"/\\"/g' | awk '{printf "%s\\n", $0}')
+            echo "TEST_LOGS<<EOF" >> $GITHUB_ENV
+            echo "$LOG_OUTPUT" >> $GITHUB_ENV
             echo "EOF" >> $GITHUB_ENV
+          else
+            echo "TEST_LOGS=No test reports found" >> $GITHUB_ENV
           fi
 
       # ✅ Slack PASS
       - name: Slack Notification - Success
         if: success()
-        uses: slackapi/slack-github-action@v1.24.0
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        with:
-          slack-message: |
-            ✅ *Selenium Tests PASSED*
-            
-            *Repository:* ${{ github.repository }}
-            *Branch:* ${{ github.ref_name }}
-            *Java Version:* ${{ matrix.java-version }}
-            *Commit:* ${{ github.sha }}
-            *Workflow:* ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \
+          -H 'Content-Type: application/json' \
+          -d '{
+            "text": "✅ *Selenium Tests PASSED*",
+            "blocks": [
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "✅ *Selenium Tests PASSED*\n\n*Repo:* ${{ github.repository }}\n*Branch:* ${{ github.ref_name }}\n*Java:* ${{ matrix.java-version }}\n*Commit:* <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>"
+                }
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Run>"
+                }
+              }
+            ]
+          }'
 
       # ❌ Slack FAIL
       - name: Slack Notification - Failure
         if: failure()
-        uses: slackapi/slack-github-action@v1.24.0
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        with:
-          slack-message: |
-            ❌ *Selenium Tests FAILED*
-            
-            *Repository:* ${{ github.repository }}
-            *Branch:* ${{ github.ref_name }}
-            *Java Version:* ${{ matrix.java-version }}
-            *Commit:* ${{ github.sha }}
-            
-            *Test Reports:* Reports and screenshots uploaded as artifacts
-            *Workflow Run:* ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-            
-            ```
-            Recent test output available in artifacts
-            Check surefire-reports for detailed logs
-            ```
+        run: |
+          LOGS="${TEST_LOGS:-No logs available}"
+          curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \
+          -H 'Content-Type: application/json' \
+          -d "{
+            \"text\": \"❌ *Selenium Tests FAILED*\",
+            \"blocks\": [
+              {
+                \"type\": \"section\",
+                \"text\": {
+                  \"type\": \"mrkdwn\",
+                  \"text\": \"❌ *Selenium Tests FAILED*\\n\\n*Repo:* ${{ github.repository }}\\n*Branch:* ${{ github.ref_name }}\\n*Java:* ${{ matrix.java-version }}\\n*Commit:* <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>\"
+                }
+              },
+              {
+                \"type\": \"section\",
+                \"text\": {
+                  \"type\": \"mrkdwn\",
+                  \"text\": \"*Test Logs:*\\n\`\`\`${LOGS}\`\`\`\"
+                }
+              },
+              {
+                \"type\": \"section\",
+                \"text\": {
+                  \"type\": \"mrkdwn\",
+                  \"text\": \"<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Full Logs & Artifacts>\"
+                }
+              }
+            ]
+          }"
