@@ -99,68 +99,66 @@ jobs:
         continue-on-error: true
         run: |
           if [ -d target/surefire-reports ]; then
-            # Install xmlstarlet for better XML parsing
+            # Install xmlstarlet
             sudo apt-get update -qq && sudo apt-get install -y -qq xmlstarlet > /dev/null 2>&1
             
-            # Parse all test results
-            RESULTS=""
+            # Create results file
+            > /tmp/test_results.txt
+            
+            # Parse XML files
             for xml_file in target/surefire-reports/TEST-*.xml; do
               if [ -f "$xml_file" ]; then
-                # Extract test cases using xmlstarlet
+                # Get all testcase elements, filter out setUp/tearDown
                 xmlstarlet sel -t \
                   -m "//testcase" \
-                  -v "concat(@classname, '.', @name, '|', @time, '|')" \
-                  -i "failure" -o "FAILED" -b \
+                  -v "@name" -o "|" \
+                  -v "@time" -o "|" \
+                  -i "failure" -o "FAIL" -b \
                   -i "error" -o "ERROR" -b \
-                  -i "not(failure) and not(error)" -o "PASSED" -b \
+                  -i "not(failure) and not(error)" -o "PASS" -b \
                   -n \
-                  "$xml_file" 2>/dev/null | while IFS='|' read -r testname time status; do
-                    # Extract just the method name
-                    METHOD_NAME=$(echo "$testname" | sed 's/.*\.//')
-                    TIME_ROUNDED=$(printf "%.1f" "$time")
-                    
-                    if [ "$status" = "PASSED" ]; then
-                      echo "✅ $METHOD_NAME (${TIME_ROUNDED}s)"
-                    else
-                      echo "❌ $METHOD_NAME (${TIME_ROUNDED}s)"
-                    fi
-                  done
-              fi
-            done > /tmp/test_results.txt
-            
-            # Get the results (limit to 25 tests to avoid message size issues)
-            RESULTS=$(cat /tmp/test_results.txt | head -25)
-            TOTAL_COUNT=$(cat /tmp/test_results.txt | wc -l)
-            
-            if [ $TOTAL_COUNT -gt 25 ]; then
-              RESULTS="$RESULTS"$'\n'"... and $((TOTAL_COUNT - 25)) more tests"
-            fi
-            
-            # Count totals using xmlstarlet
-            TOTAL=0
-            FAILURES=0
-            ERRORS=0
-            for xml_file in target/surefire-reports/TEST-*.xml; do
-              if [ -f "$xml_file" ]; then
-                T=$(xmlstarlet sel -t -v "count(//testcase)" "$xml_file" 2>/dev/null || echo 0)
-                F=$(xmlstarlet sel -t -v "count(//failure)" "$xml_file" 2>/dev/null || echo 0)
-                E=$(xmlstarlet sel -t -v "count(//error)" "$xml_file" 2>/dev/null || echo 0)
-                TOTAL=$((TOTAL + T))
-                FAILURES=$((FAILURES + F))
-                ERRORS=$((ERRORS + E))
+                  "$xml_file" 2>/dev/null >> /tmp/all_tests.txt
               fi
             done
-            PASSED=$((TOTAL - FAILURES - ERRORS))
             
-            # Escape for JSON
-            FORMATTED_RESULTS=$(echo "$RESULTS" | jq -Rs .)
+            # Filter and format results
+            if [ -f /tmp/all_tests.txt ]; then
+              grep -v "setUp\|tearDown\|setUpClass\|tearDownClass" /tmp/all_tests.txt | while IFS='|' read -r name time status; do
+                # Round time to 1 decimal
+                rounded_time=$(printf "%.1f" "$time" 2>/dev/null || echo "$time")
+                
+                # Add status emoji
+                if [ "$status" = "PASS" ]; then
+                  echo "PASS $name (${rounded_time}s)"
+                elif [ "$status" = "FAIL" ]; then
+                  echo "FAIL $name (${rounded_time}s)"
+                elif [ "$status" = "ERROR" ]; then
+                  echo "ERROR $name (${rounded_time}s)"
+                fi
+              done > /tmp/test_results.txt
+            fi
             
-            echo "TEST_RESULTS=$FORMATTED_RESULTS" >> $GITHUB_ENV
+            # Get counts
+            TOTAL=$(wc -l < /tmp/test_results.txt)
+            PASSED=$(grep -c "^PASS" /tmp/test_results.txt || echo 0)
+            FAILED=$(grep -c "^FAIL\|^ERROR" /tmp/test_results.txt || echo 0)
+            
+            # Limit to first 20 results
+            RESULTS=$(head -20 /tmp/test_results.txt)
+            if [ $TOTAL -gt 20 ]; then
+              RESULTS="$RESULTS"$'\n'"... and $((TOTAL - 20)) more tests"
+            fi
+            
+            # Save to env (escape for JSON)
+            echo "TEST_RESULTS<<EOFMARKER" >> $GITHUB_ENV
+            echo "$RESULTS" >> $GITHUB_ENV
+            echo "EOFMARKER" >> $GITHUB_ENV
+            
             echo "TOTAL_TESTS=$TOTAL" >> $GITHUB_ENV
             echo "PASSED_TESTS=$PASSED" >> $GITHUB_ENV
-            echo "FAILED_TESTS=$((FAILURES + ERRORS))" >> $GITHUB_ENV
+            echo "FAILED_TESTS=$FAILED" >> $GITHUB_ENV
           else
-            echo "TEST_RESULTS=\"No test reports found\"" >> $GITHUB_ENV
+            echo "TEST_RESULTS=No test reports found" >> $GITHUB_ENV
             echo "TOTAL_TESTS=0" >> $GITHUB_ENV
             echo "PASSED_TESTS=0" >> $GITHUB_ENV
             echo "FAILED_TESTS=0" >> $GITHUB_ENV
@@ -170,7 +168,13 @@ jobs:
       - name: Slack Notification - Success
         if: success()
         run: |
-          curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \
+          # Format results for Slack (add checkmarks)
+          FORMATTED=$(echo "$TEST_RESULTS" | sed 's/^PASS /✅ /g' | sed 's/^FAIL /❌ /g' | sed 's/^ERROR /❌ /g')
+          
+          # Escape for JSON
+          ESCAPED=$(echo "$FORMATTED" | jq -Rs .)
+          
+          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
           -H 'Content-Type: application/json' \
           -d '{
             "text": "✅ Selenium Tests PASSED",
@@ -200,7 +204,7 @@ jobs:
                 "type": "section",
                 "text": {
                   "type": "mrkdwn",
-                  "text": "*Test Results:*\n```'"$(echo $TEST_RESULTS | jq -r .)"'```"
+                  "text": "*Test Results:*\n```'"$(echo $ESCAPED | jq -r .)"'```"
                 }
               },
               {
@@ -217,7 +221,13 @@ jobs:
       - name: Slack Notification - Failure
         if: failure()
         run: |
-          curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \
+          # Format results for Slack (add checkmarks)
+          FORMATTED=$(echo "$TEST_RESULTS" | sed 's/^PASS /✅ /g' | sed 's/^FAIL /❌ /g' | sed 's/^ERROR /❌ /g')
+          
+          # Escape for JSON
+          ESCAPED=$(echo "$FORMATTED" | jq -Rs .)
+          
+          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
           -H 'Content-Type: application/json' \
           -d '{
             "text": "❌ Selenium Tests FAILED",
@@ -247,7 +257,7 @@ jobs:
                 "type": "section",
                 "text": {
                   "type": "mrkdwn",
-                  "text": "*Test Results:*\n```'"$(echo $TEST_RESULTS | jq -r .)"'```"
+                  "text": "*Test Results:*\n```'"$(echo $ESCAPED | jq -r .)"'```"
                 }
               },
               {
