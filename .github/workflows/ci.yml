@@ -53,119 +53,6 @@ jobs:
             echo "REPORTS_EXIST=false" >> $GITHUB_ENV
           fi
 
-      # 📊 Parse and Display Test Results
-      - name: Parse Test Results
-        if: always()
-        continue-on-error: true
-        run: |
-          echo "========================================="
-          echo "📊 DETAILED TEST RESULTS"
-          echo "========================================="
-          echo ""
-          
-          if [ -d target/surefire-reports ]; then
-            # Count total tests
-            TOTAL_TESTS=$(find target/surefire-reports -name "TEST-*.xml" -exec grep -o 'tests="[0-9]*"' {} \; | grep -o '[0-9]*' | awk '{s+=$1} END {print s}')
-            FAILURES=$(find target/surefire-reports -name "TEST-*.xml" -exec grep -o 'failures="[0-9]*"' {} \; | grep -o '[0-9]*' | awk '{s+=$1} END {print s}')
-            ERRORS=$(find target/surefire-reports -name "TEST-*.xml" -exec grep -o 'errors="[0-9]*"' {} \; | grep -o '[0-9]*' | awk '{s+=$1} END {print s}')
-            SKIPPED=$(find target/surefire-reports -name "TEST-*.xml" -exec grep -o 'skipped="[0-9]*"' {} \; | grep -o '[0-9]*' | awk '{s+=$1} END {print s}')
-          
-            PASSED=$((TOTAL_TESTS - FAILURES - ERRORS - SKIPPED))
-          
-            echo "📈 Summary:"
-            echo "  Total Tests: $TOTAL_TESTS"
-            echo "  ✅ Passed: $PASSED"
-            echo "  ❌ Failed: $FAILURES"
-            echo "  ⚠️  Errors: $ERRORS"
-            echo "  ⏭️  Skipped: $SKIPPED"
-            echo ""
-            echo "========================================="
-            echo "📋 Individual Test Results:"
-            echo "========================================="
-          
-            # Initialize variables
-            TOTAL_TESTS=${TOTAL_TESTS:-0}
-            PASSED=${PASSED:-0}
-            FAILURES=${FAILURES:-0}
-            ERRORS=${ERRORS:-0}
-            SKIPPED=${SKIPPED:-0}
-          
-            # Save to env for Slack
-            echo "TOTAL_TESTS=$TOTAL_TESTS" >> $GITHUB_ENV
-            echo "PASSED_TESTS=$PASSED" >> $GITHUB_ENV
-            echo "FAILED_TESTS=$FAILURES" >> $GITHUB_ENV
-            echo "ERROR_TESTS=$ERRORS" >> $GITHUB_ENV
-            echo "SKIPPED_TESTS=$SKIPPED" >> $GITHUB_ENV
-          
-            # Parse each test file and build detailed output
-            DETAILED_OUTPUT=""
-          
-            for file in target/surefire-reports/TEST-*.xml; do
-              if [ -f "$file" ]; then
-                CLASS_NAME=$(grep -o 'name="[^"]*"' "$file" | head -1 | sed 's/name="//;s/"//')
-                SHORT_CLASS=$(echo "$CLASS_NAME" | awk -F. '{print $NF}')
-          
-                echo ""
-                echo "📦 Test Class: $CLASS_NAME"
-                echo "---"
-          
-                DETAILED_OUTPUT="${DETAILED_OUTPUT}\\n*${SHORT_CLASS}:*\\n"
-          
-                # Extract individual test cases
-                while IFS= read -r line; do
-                  if [[ $line == *"<testcase"* ]]; then
-                    TEST_NAME=$(echo "$line" | grep -o 'name="[^"]*"' | sed 's/name="//;s/"//')
-                    TIME=$(echo "$line" | grep -o 'time="[^"]*"' | sed 's/time="//;s/"//')
-          
-                    # Round time to 2 decimals
-                    TIME=$(printf "%.2f" "$TIME" 2>/dev/null || echo "$TIME")
-          
-                    # Check next few lines for failure/error/skipped
-                    NEXT_LINES=$(grep -A 3 "name=\"$TEST_NAME\"" "$file")
-          
-                    if echo "$NEXT_LINES" | grep -q "<failure"; then
-                      echo "  ❌ $TEST_NAME (${TIME}s) - FAILED"
-                      DETAILED_OUTPUT="${DETAILED_OUTPUT}  ❌ ${TEST_NAME} (${TIME}s)\\n"
-                    elif echo "$NEXT_LINES" | grep -q "<error"; then
-                      echo "  ⚠️  $TEST_NAME (${TIME}s) - ERROR"
-                      DETAILED_OUTPUT="${DETAILED_OUTPUT}  ⚠️ ${TEST_NAME} (${TIME}s)\\n"
-                    elif echo "$NEXT_LINES" | grep -q "<skipped"; then
-                      echo "  ⏭️  $TEST_NAME (${TIME}s) - SKIPPED"
-                      DETAILED_OUTPUT="${DETAILED_OUTPUT}  ⏭️ ${TEST_NAME} (${TIME}s)\\n"
-                    else
-                      echo "  ✅ $TEST_NAME (${TIME}s) - PASSED"
-                      DETAILED_OUTPUT="${DETAILED_OUTPUT}  ✅ ${TEST_NAME} (${TIME}s)\\n"
-                    fi
-                  fi
-                done < <(grep '<testcase' "$file")
-              fi
-            done
-          
-            echo ""
-            echo "========================================="
-          
-            # Truncate if too long (Slack limit ~3000 chars per section)
-            if [ ${#DETAILED_OUTPUT} -gt 2500 ]; then
-              DETAILED_OUTPUT="${DETAILED_OUTPUT:0:2500}\\n\\n_...results truncated, view full details in workflow logs_"
-            fi
-          
-            # Save detailed output - use a delimiter to handle multiline
-            {
-              echo 'SLACK_TEST_DETAILS<<DELIMITER_EOF'
-              echo -e "$DETAILED_OUTPUT"
-              echo 'DELIMITER_EOF'
-            } >> $GITHUB_ENV
-          
-          else
-            echo "⚠️  No test reports found!"
-            echo "TOTAL_TESTS=0" >> $GITHUB_ENV
-            echo "PASSED_TESTS=0" >> $GITHUB_ENV
-            echo "FAILED_TESTS=0" >> $GITHUB_ENV
-            echo "ERROR_TESTS=0" >> $GITHUB_ENV
-            echo "SKIPPED_TESTS=0" >> $GITHUB_ENV
-            echo "SLACK_TEST_DETAILS=No test reports found" >> $GITHUB_ENV
-          fi
-
       # 📦 Upload reports only if they exist
       - name: Upload Test Reports
         if: always()
@@ -183,58 +70,16 @@ jobs:
         run: |
           echo "## Test Execution Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Java Version:** ${{ matrix.java-version }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
           if [ -d target/surefire-reports ]; then
-            echo "### 📊 Test Results" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
-            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-            echo "| Total Tests | ${TOTAL_TESTS:-0} |" >> $GITHUB_STEP_SUMMARY
-            echo "| ✅ Passed | ${PASSED_TESTS:-0} |" >> $GITHUB_STEP_SUMMARY
-            echo "| ❌ Failed | ${FAILED_TESTS:-0} |" >> $GITHUB_STEP_SUMMARY
-            echo "| ⚠️ Errors | ${ERROR_TESTS:-0} |" >> $GITHUB_STEP_SUMMARY
-            echo "| ⏭️ Skipped | ${SKIPPED_TESTS:-0} |" >> $GITHUB_STEP_SUMMARY
+            echo "### Test Reports Generated" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Reports Location:** \`target/surefire-reports/\`" >> $GITHUB_STEP_SUMMARY
-          
-            # Add detailed test results
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### 📋 Detailed Results" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-          
-            for file in target/surefire-reports/TEST-*.xml; do
-              if [ -f "$file" ]; then
-                CLASS_NAME=$(grep -o 'name="[^"]*"' "$file" | head -1 | sed 's/name="//;s/"//')
-                echo "#### $CLASS_NAME" >> $GITHUB_STEP_SUMMARY
-                echo "" >> $GITHUB_STEP_SUMMARY
-          
-                while IFS= read -r line; do
-                  if [[ $line == *"<testcase"* ]]; then
-                    TEST_NAME=$(echo "$line" | grep -o 'name="[^"]*"' | sed 's/name="//;s/"//')
-                    TIME=$(echo "$line" | grep -o 'time="[^"]*"' | sed 's/time="//;s/"//')
-          
-                    NEXT_LINES=$(grep -A 3 "name=\"$TEST_NAME\"" "$file")
-          
-                    if echo "$NEXT_LINES" | grep -q "<failure"; then
-                      echo "- ❌ \`$TEST_NAME\` (${TIME}s)" >> $GITHUB_STEP_SUMMARY
-                    elif echo "$NEXT_LINES" | grep -q "<error"; then
-                      echo "- ⚠️ \`$TEST_NAME\` (${TIME}s)" >> $GITHUB_STEP_SUMMARY
-                    elif echo "$NEXT_LINES" | grep -q "<skipped"; then
-                      echo "- ⏭️ \`$TEST_NAME\` (${TIME}s)" >> $GITHUB_STEP_SUMMARY
-                    else
-                      echo "- ✅ \`$TEST_NAME\` (${TIME}s)" >> $GITHUB_STEP_SUMMARY
-                    fi
-                  fi
-                done < <(grep '<testcase' "$file")
-          
-                echo "" >> $GITHUB_STEP_SUMMARY
-              fi
-            done
-          else
-            echo "⚠️ No test reports generated" >> $GITHUB_STEP_SUMMARY
+            if [ -f target/surefire-reports/index.html ]; then
+              echo "- HTML Report available" >> $GITHUB_STEP_SUMMARY
+            fi
           fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Java Version:** ${{ matrix.java-version }}" >> $GITHUB_STEP_SUMMARY
 
       # 📸 Upload screenshots only if they exist
       - name: Upload Screenshots
@@ -248,6 +93,17 @@ jobs:
             screenshots/**/*.png
           retention-days: 30
 
+      # 📝 Capture test logs
+      - name: Capture Test Logs
+        if: always()
+        continue-on-error: true
+        run: |
+          if [ -d target/surefire-reports ]; then
+            echo "TEST_SUMMARY<<EOF" >> $GITHUB_ENV
+            find target/surefire-reports -name "*.txt" -exec head -20 {} \; | head -100
+            echo "EOF" >> $GITHUB_ENV
+          fi
+
       # ✅ Slack PASS
       - name: Slack Notification - Success
         if: success()
@@ -255,77 +111,14 @@ jobs:
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         with:
-          payload: |
-            {
-              "username": "myGitHubActions",
-              "icon_emoji": ":robot_face:",
-              "text": "✅ Selenium Tests PASSED - Java ${{ matrix.java-version }}",
-              "blocks": [
-                {
-                  "type": "header",
-                  "text": { "type": "plain_text", "text": "✅ Selenium Tests Passed", "emoji": true }
-                },
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Repo:*\n${{ github.repository }}"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Branch:*\n${{ github.ref_name }}"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Java Version:*\n${{ matrix.java-version }}"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Commit:*\n<${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>"
-                    }
-                  ]
-                },
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Total Tests:*\n${{ env.TOTAL_TESTS }}"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*✅ Passed:*\n${{ env.PASSED_TESTS }}"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*⏭️ Skipped:*\n${{ env.SKIPPED_TESTS }}"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Success Rate:*\n${{ env.PASSED_TESTS }}/${{ env.TOTAL_TESTS }}"
-                    }
-                  ]
-                },
-                {
-                  "type": "divider"
-                },
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*📋 Test Details:*\n${{ env.SLACK_TEST_DETAILS }}"
-                  }
-                },
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|📊 View Full Workflow Run>"
-                  }
-                }
-              ]
-            }
+          slack-message: |
+            ✅ *Selenium Tests PASSED*
+            
+            *Repository:* ${{ github.repository }}
+            *Branch:* ${{ github.ref_name }}
+            *Java Version:* ${{ matrix.java-version }}
+            *Commit:* ${{ github.sha }}
+            *Workflow:* ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
       # ❌ Slack FAIL
       - name: Slack Notification - Failure
@@ -334,74 +127,18 @@ jobs:
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         with:
-          payload: |
-            {
-              "username": "myGitHubActions",
-              "icon_emoji": ":robot_face:",
-              "text": "❌ Selenium Tests FAILED - Java ${{ matrix.java-version }}",
-              "blocks": [
-                {
-                  "type": "header",
-                  "text": { "type": "plain_text", "text": "❌ Selenium Tests Failed", "emoji": true }
-                },
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Repo:*\n${{ github.repository }}"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Branch:*\n${{ github.ref_name }}"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Java Version:*\n${{ matrix.java-version }}"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Commit:*\n<${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>"
-                    }
-                  ]
-                },
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Total Tests:*\n${{ env.TOTAL_TESTS }}"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*✅ Passed:*\n${{ env.PASSED_TESTS }}"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*❌ Failed:*\n${{ env.FAILED_TESTS }}"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*⚠️ Errors:*\n${{ env.ERROR_TESTS }}"
-                    }
-                  ]
-                },
-                {
-                  "type": "divider"
-                },
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*📋 Test Details:*\n${{ env.SLACK_TEST_DETAILS }}"
-                  }
-                },
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|📊 View Full Workflow> | <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts|📦 Download Reports>"
-                  }
-                }
-              ]
-            }
+          slack-message: |
+            ❌ *Selenium Tests FAILED*
+            
+            *Repository:* ${{ github.repository }}
+            *Branch:* ${{ github.ref_name }}
+            *Java Version:* ${{ matrix.java-version }}
+            *Commit:* ${{ github.sha }}
+            
+            *Test Reports:* Reports and screenshots uploaded as artifacts
+            *Workflow Run:* ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            
+            ```
+            Recent test output available in artifacts
+            Check surefire-reports for detailed logs
+            ```
