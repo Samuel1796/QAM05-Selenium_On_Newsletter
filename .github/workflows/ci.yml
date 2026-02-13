@@ -93,76 +93,148 @@ jobs:
             screenshots/**/*.png
           retention-days: 30
 
-      # 📝 Extract Test Logs
-      - name: Extract Test Logs
-        if: failure()
+      # 📊 Parse Test Results
+      - name: Parse Test Results
+        if: always()
         continue-on-error: true
         run: |
           if [ -d target/surefire-reports ]; then
-            echo "Extracting test failures..."
-            LOG_OUTPUT=$(find target/surefire-reports -name "*.txt" -type f -exec grep -l "FAILURE\|ERROR" {} \; | head -3 | xargs cat | head -50 | sed 's/"/\\"/g' | awk '{printf "%s\\n", $0}')
-            echo "TEST_LOGS<<EOF" >> $GITHUB_ENV
-            echo "$LOG_OUTPUT" >> $GITHUB_ENV
+            # Parse XML reports for test results
+            RESULTS=$(find target/surefire-reports -name "TEST-*.xml" -type f | while read file; do
+              # Extract test case results using grep and sed
+              grep -o '<testcase[^>]*name="[^"]*"[^>]*time="[^"]*"[^>]*classname="[^"]*"' "$file" | while read line; do
+                TEST_NAME=$(echo "$line" | sed -n 's/.*name="\([^"]*\)".*/\1/p')
+                CLASS_NAME=$(echo "$line" | sed -n 's/.*classname="\([^"]*\)".*/\1/p')
+                TIME=$(echo "$line" | sed -n 's/.*time="\([^"]*\)".*/\1/p')
+                
+                # Check if test failed or had error
+                TEST_BLOCK_START=$(grep -n "name=\"$TEST_NAME\"" "$file" | cut -d: -f1)
+                if [ ! -z "$TEST_BLOCK_START" ]; then
+                  # Get the next few lines to check for failure/error
+                  TEST_CONTENT=$(sed -n "${TEST_BLOCK_START},$((TEST_BLOCK_START+10))p" "$file")
+                  if echo "$TEST_CONTENT" | grep -q "<failure\|<error"; then
+                    echo "❌ $TEST_NAME (${TIME}s)"
+                  else
+                    echo "✅ $TEST_NAME (${TIME}s)"
+                  fi
+                fi
+              done
+            done)
+            
+            # Count totals
+            TOTAL=$(find target/surefire-reports -name "TEST-*.xml" -exec grep -o '<testcase' {} \; | wc -l)
+            FAILURES=$(find target/surefire-reports -name "TEST-*.xml" -exec grep -o '<failure' {} \; | wc -l)
+            ERRORS=$(find target/surefire-reports -name "TEST-*.xml" -exec grep -o '<error' {} \; | wc -l)
+            PASSED=$((TOTAL - FAILURES - ERRORS))
+            
+            # Format results for Slack (escape special characters)
+            FORMATTED_RESULTS=$(echo "$RESULTS" | sed 's/"/\\"/g' | awk '{printf "%s\\n", $0}' | head -30)
+            
+            echo "TEST_RESULTS<<EOF" >> $GITHUB_ENV
+            echo "$FORMATTED_RESULTS" >> $GITHUB_ENV
             echo "EOF" >> $GITHUB_ENV
+            
+            echo "TOTAL_TESTS=$TOTAL" >> $GITHUB_ENV
+            echo "PASSED_TESTS=$PASSED" >> $GITHUB_ENV
+            echo "FAILED_TESTS=$((FAILURES + ERRORS))" >> $GITHUB_ENV
           else
-            echo "TEST_LOGS=No test reports found" >> $GITHUB_ENV
+            echo "TEST_RESULTS=No test reports found" >> $GITHUB_ENV
+            echo "TOTAL_TESTS=0" >> $GITHUB_ENV
+            echo "PASSED_TESTS=0" >> $GITHUB_ENV
+            echo "FAILED_TESTS=0" >> $GITHUB_ENV
           fi
 
       # ✅ Slack PASS
       - name: Slack Notification - Success
         if: success()
         run: |
+          RESULTS="${TEST_RESULTS:-No results available}"
           curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \
           -H 'Content-Type: application/json' \
-          -d '{
-            "text": "✅ *Selenium Tests PASSED*",
-            "blocks": [
+          -d "{
+            \"text\": \"✅ Selenium Tests PASSED\",
+            \"blocks\": [
               {
-                "type": "section",
-                "text": {
-                  "type": "mrkdwn",
-                  "text": "✅ *Selenium Tests PASSED*\n\n*Repo:* ${{ github.repository }}\n*Branch:* ${{ github.ref_name }}\n*Java:* ${{ matrix.java-version }}\n*Commit:* <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>"
+                \"type\": \"header\",
+                \"text\": {
+                  \"type\": \"plain_text\",
+                  \"text\": \"✅ Selenium Tests PASSED\"
                 }
               },
               {
-                "type": "section",
-                "text": {
-                  "type": "mrkdwn",
-                  "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Run>"
+                \"type\": \"section\",
+                \"text\": {
+                  \"type\": \"mrkdwn\",
+                  \"text\": \"*Repo:* ${{ github.repository }}\\n*Branch:* ${{ github.ref_name }}\\n*Java:* ${{ matrix.java-version }}\\n*Commit:* ${{ github.sha }}\"
+                }
+              },
+              {
+                \"type\": \"section\",
+                \"text\": {
+                  \"type\": \"mrkdwn\",
+                  \"text\": \"*Test Summary:* ${PASSED_TESTS}/${TOTAL_TESTS} passed ✅\"
+                }
+              },
+              {
+                \"type\": \"section\",
+                \"text\": {
+                  \"type\": \"mrkdwn\",
+                  \"text\": \"*Test Results:*\\n\`\`\`${RESULTS}\`\`\`\"
+                }
+              },
+              {
+                \"type\": \"section\",
+                \"text\": {
+                  \"type\": \"mrkdwn\",
+                  \"text\": \"<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Run>\"
                 }
               }
             ]
-          }'
+          }"
 
       # ❌ Slack FAIL
       - name: Slack Notification - Failure
         if: failure()
         run: |
-          LOGS="${TEST_LOGS:-No logs available}"
+          RESULTS="${TEST_RESULTS:-No results available}"
           curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \
           -H 'Content-Type: application/json' \
           -d "{
-            \"text\": \"❌ *Selenium Tests FAILED*\",
+            \"text\": \"❌ Selenium Tests FAILED\",
             \"blocks\": [
               {
-                \"type\": \"section\",
+                \"type\": \"header\",
                 \"text\": {
-                  \"type\": \"mrkdwn\",
-                  \"text\": \"❌ *Selenium Tests FAILED*\\n\\n*Repo:* ${{ github.repository }}\\n*Branch:* ${{ github.ref_name }}\\n*Java:* ${{ matrix.java-version }}\\n*Commit:* <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>\"
+                  \"type\": \"plain_text\",
+                  \"text\": \"❌ Selenium Tests FAILED\"
                 }
               },
               {
                 \"type\": \"section\",
                 \"text\": {
                   \"type\": \"mrkdwn\",
-                  \"text\": \"*Test Logs:*\\n\`\`\`${LOGS}\`\`\`\"
+                  \"text\": \"*Repo:* ${{ github.repository }}\\n*Branch:* ${{ github.ref_name }}\\n*Java:* ${{ matrix.java-version }}\\n*Commit:* ${{ github.sha }}\"
                 }
               },
               {
                 \"type\": \"section\",
                 \"text\": {
                   \"type\": \"mrkdwn\",
-                  \"text\": \"<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Full Logs & Artifacts>\"
+                  \"text\": \"*Test Summary:* ${PASSED_TESTS} passed, ${FAILED_TESTS} failed out of ${TOTAL_TESTS} total\"
+                }
+              },
+              {
+                \"type\": \"section\",
+                \"text\": {
+                  \"type\": \"mrkdwn\",
+                  \"text\": \"*Test Results:*\\n\`\`\`${RESULTS}\`\`\`\"
+                }
+              },
+              {
+                \"type\": \"section\",
+                \"text\": {
+                  \"type\": \"mrkdwn\",
+                  \"text\": \"<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Full Logs & Screenshots>\"
                 }
               }
             ]
