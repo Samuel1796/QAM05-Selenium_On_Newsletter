@@ -99,46 +99,68 @@ jobs:
         continue-on-error: true
         run: |
           if [ -d target/surefire-reports ]; then
-            # Parse XML reports for test results
-            RESULTS=$(find target/surefire-reports -name "TEST-*.xml" -type f | while read file; do
-              # Extract test case results using grep and sed
-              grep -o '<testcase[^>]*name="[^"]*"[^>]*time="[^"]*"[^>]*classname="[^"]*"' "$file" | while read line; do
-                TEST_NAME=$(echo "$line" | sed -n 's/.*name="\([^"]*\)".*/\1/p')
-                CLASS_NAME=$(echo "$line" | sed -n 's/.*classname="\([^"]*\)".*/\1/p')
-                TIME=$(echo "$line" | sed -n 's/.*time="\([^"]*\)".*/\1/p')
-                
-                # Check if test failed or had error
-                TEST_BLOCK_START=$(grep -n "name=\"$TEST_NAME\"" "$file" | cut -d: -f1)
-                if [ ! -z "$TEST_BLOCK_START" ]; then
-                  # Get the next few lines to check for failure/error
-                  TEST_CONTENT=$(sed -n "${TEST_BLOCK_START},$((TEST_BLOCK_START+10))p" "$file")
-                  if echo "$TEST_CONTENT" | grep -q "<failure\|<error"; then
-                    echo "❌ $TEST_NAME (${TIME}s)"
-                  else
-                    echo "✅ $TEST_NAME (${TIME}s)"
-                  fi
-                fi
-              done
-            done)
+            # Install xmlstarlet for better XML parsing
+            sudo apt-get update -qq && sudo apt-get install -y -qq xmlstarlet > /dev/null 2>&1
             
-            # Count totals
-            TOTAL=$(find target/surefire-reports -name "TEST-*.xml" -exec grep -o '<testcase' {} \; | wc -l)
-            FAILURES=$(find target/surefire-reports -name "TEST-*.xml" -exec grep -o '<failure' {} \; | wc -l)
-            ERRORS=$(find target/surefire-reports -name "TEST-*.xml" -exec grep -o '<error' {} \; | wc -l)
+            # Parse all test results
+            RESULTS=""
+            for xml_file in target/surefire-reports/TEST-*.xml; do
+              if [ -f "$xml_file" ]; then
+                # Extract test cases using xmlstarlet
+                xmlstarlet sel -t \
+                  -m "//testcase" \
+                  -v "concat(@classname, '.', @name, '|', @time, '|')" \
+                  -i "failure" -o "FAILED" -b \
+                  -i "error" -o "ERROR" -b \
+                  -i "not(failure) and not(error)" -o "PASSED" -b \
+                  -n \
+                  "$xml_file" 2>/dev/null | while IFS='|' read -r testname time status; do
+                    # Extract just the method name
+                    METHOD_NAME=$(echo "$testname" | sed 's/.*\.//')
+                    TIME_ROUNDED=$(printf "%.1f" "$time")
+                    
+                    if [ "$status" = "PASSED" ]; then
+                      echo "✅ $METHOD_NAME (${TIME_ROUNDED}s)"
+                    else
+                      echo "❌ $METHOD_NAME (${TIME_ROUNDED}s)"
+                    fi
+                  done
+              fi
+            done > /tmp/test_results.txt
+            
+            # Get the results (limit to 25 tests to avoid message size issues)
+            RESULTS=$(cat /tmp/test_results.txt | head -25)
+            TOTAL_COUNT=$(cat /tmp/test_results.txt | wc -l)
+            
+            if [ $TOTAL_COUNT -gt 25 ]; then
+              RESULTS="$RESULTS"$'\n'"... and $((TOTAL_COUNT - 25)) more tests"
+            fi
+            
+            # Count totals using xmlstarlet
+            TOTAL=0
+            FAILURES=0
+            ERRORS=0
+            for xml_file in target/surefire-reports/TEST-*.xml; do
+              if [ -f "$xml_file" ]; then
+                T=$(xmlstarlet sel -t -v "count(//testcase)" "$xml_file" 2>/dev/null || echo 0)
+                F=$(xmlstarlet sel -t -v "count(//failure)" "$xml_file" 2>/dev/null || echo 0)
+                E=$(xmlstarlet sel -t -v "count(//error)" "$xml_file" 2>/dev/null || echo 0)
+                TOTAL=$((TOTAL + T))
+                FAILURES=$((FAILURES + F))
+                ERRORS=$((ERRORS + E))
+              fi
+            done
             PASSED=$((TOTAL - FAILURES - ERRORS))
             
-            # Format results for Slack (escape special characters)
-            FORMATTED_RESULTS=$(echo "$RESULTS" | sed 's/"/\\"/g' | awk '{printf "%s\\n", $0}' | head -30)
+            # Escape for JSON
+            FORMATTED_RESULTS=$(echo "$RESULTS" | jq -Rs .)
             
-            echo "TEST_RESULTS<<EOF" >> $GITHUB_ENV
-            echo "$FORMATTED_RESULTS" >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
-            
+            echo "TEST_RESULTS=$FORMATTED_RESULTS" >> $GITHUB_ENV
             echo "TOTAL_TESTS=$TOTAL" >> $GITHUB_ENV
             echo "PASSED_TESTS=$PASSED" >> $GITHUB_ENV
             echo "FAILED_TESTS=$((FAILURES + ERRORS))" >> $GITHUB_ENV
           else
-            echo "TEST_RESULTS=No test reports found" >> $GITHUB_ENV
+            echo "TEST_RESULTS=\"No test reports found\"" >> $GITHUB_ENV
             echo "TOTAL_TESTS=0" >> $GITHUB_ENV
             echo "PASSED_TESTS=0" >> $GITHUB_ENV
             echo "FAILED_TESTS=0" >> $GITHUB_ENV
@@ -148,94 +170,92 @@ jobs:
       - name: Slack Notification - Success
         if: success()
         run: |
-          RESULTS="${TEST_RESULTS:-No results available}"
           curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \
           -H 'Content-Type: application/json' \
-          -d "{
-            \"text\": \"✅ Selenium Tests PASSED\",
-            \"blocks\": [
+          -d '{
+            "text": "✅ Selenium Tests PASSED",
+            "blocks": [
               {
-                \"type\": \"header\",
-                \"text\": {
-                  \"type\": \"plain_text\",
-                  \"text\": \"✅ Selenium Tests PASSED\"
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "✅ Selenium Tests PASSED"
                 }
               },
               {
-                \"type\": \"section\",
-                \"text\": {
-                  \"type\": \"mrkdwn\",
-                  \"text\": \"*Repo:* ${{ github.repository }}\\n*Branch:* ${{ github.ref_name }}\\n*Java:* ${{ matrix.java-version }}\\n*Commit:* ${{ github.sha }}\"
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*Repo:* ${{ github.repository }}\n*Branch:* ${{ github.ref_name }}\n*Java:* ${{ matrix.java-version }}\n*Commit:* `${{ github.sha }}`"
                 }
               },
               {
-                \"type\": \"section\",
-                \"text\": {
-                  \"type\": \"mrkdwn\",
-                  \"text\": \"*Test Summary:* ${PASSED_TESTS}/${TOTAL_TESTS} passed ✅\"
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*Test Summary:* '"$PASSED_TESTS"'/'"$TOTAL_TESTS"' passed ✅"
                 }
               },
               {
-                \"type\": \"section\",
-                \"text\": {
-                  \"type\": \"mrkdwn\",
-                  \"text\": \"*Test Results:*\\n\`\`\`${RESULTS}\`\`\`\"
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*Test Results:*\n```'"$(echo $TEST_RESULTS | jq -r .)"'```"
                 }
               },
               {
-                \"type\": \"section\",
-                \"text\": {
-                  \"type\": \"mrkdwn\",
-                  \"text\": \"<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Run>\"
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Run>"
                 }
               }
             ]
-          }"
+          }'
 
       # ❌ Slack FAIL
       - name: Slack Notification - Failure
         if: failure()
         run: |
-          RESULTS="${TEST_RESULTS:-No results available}"
           curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \
           -H 'Content-Type: application/json' \
-          -d "{
-            \"text\": \"❌ Selenium Tests FAILED\",
-            \"blocks\": [
+          -d '{
+            "text": "❌ Selenium Tests FAILED",
+            "blocks": [
               {
-                \"type\": \"header\",
-                \"text\": {
-                  \"type\": \"plain_text\",
-                  \"text\": \"❌ Selenium Tests FAILED\"
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "❌ Selenium Tests FAILED"
                 }
               },
               {
-                \"type\": \"section\",
-                \"text\": {
-                  \"type\": \"mrkdwn\",
-                  \"text\": \"*Repo:* ${{ github.repository }}\\n*Branch:* ${{ github.ref_name }}\\n*Java:* ${{ matrix.java-version }}\\n*Commit:* ${{ github.sha }}\"
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*Repo:* ${{ github.repository }}\n*Branch:* ${{ github.ref_name }}\n*Java:* ${{ matrix.java-version }}\n*Commit:* `${{ github.sha }}`"
                 }
               },
               {
-                \"type\": \"section\",
-                \"text\": {
-                  \"type\": \"mrkdwn\",
-                  \"text\": \"*Test Summary:* ${PASSED_TESTS} passed, ${FAILED_TESTS} failed out of ${TOTAL_TESTS} total\"
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*Test Summary:* '"$PASSED_TESTS"' passed, '"$FAILED_TESTS"' failed ('"$TOTAL_TESTS"' total) ⚠️"
                 }
               },
               {
-                \"type\": \"section\",
-                \"text\": {
-                  \"type\": \"mrkdwn\",
-                  \"text\": \"*Test Results:*\\n\`\`\`${RESULTS}\`\`\`\"
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*Test Results:*\n```'"$(echo $TEST_RESULTS | jq -r .)"'```"
                 }
               },
               {
-                \"type\": \"section\",
-                \"text\": {
-                  \"type\": \"mrkdwn\",
-                  \"text\": \"<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Full Logs & Screenshots>\"
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Full Logs & Screenshots>"
                 }
               }
             ]
-          }"
+          }'
