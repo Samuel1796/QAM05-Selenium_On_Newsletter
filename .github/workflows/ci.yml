@@ -10,6 +10,14 @@ on:
 jobs:
   selenium-tests:
     runs-on: ubuntu-latest
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+      SMTP_PORT: ${{ secrets.SMTP_PORT }}
+      SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+      EMAIL_TO: ${{ secrets.EMAIL_TO }}
 
     strategy:
       fail-fast: false
@@ -155,11 +163,11 @@ jobs:
           echo "EOFMARKER" >> $GITHUB_ENV
 
       - name: Slack Notification - Success
-        if: always() && env.TEST_FAILED == 'false' && secrets.SLACK_WEBHOOK_URL != ''
+        if: always() && env.TEST_FAILED == 'false' && env.SLACK_WEBHOOK_URL != ''
         continue-on-error: true
         run: |
           ESCAPED=$(echo "$FORMATTED_RESULTS" | jq -Rs .)
-          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+          curl -X POST "$SLACK_WEBHOOK_URL" \
           -H 'Content-Type: application/json' \
           -d '{
             "text": ":white_check_mark: Selenium Tests PASSED",
@@ -203,11 +211,11 @@ jobs:
           }'
 
       - name: Slack Notification - Failure
-        if: always() && env.TEST_FAILED == 'true' && secrets.SLACK_WEBHOOK_URL != ''
+        if: always() && env.TEST_FAILED == 'true' && env.SLACK_WEBHOOK_URL != ''
         continue-on-error: true
         run: |
           ESCAPED=$(echo "$FORMATTED_RESULTS" | jq -Rs .)
-          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+          curl -X POST "$SLACK_WEBHOOK_URL" \
           -H 'Content-Type: application/json' \
           -d '{
             "text": ":x: Selenium Tests FAILED",
@@ -251,17 +259,17 @@ jobs:
           }'
 
       - name: Email Notification - Success
-        if: always() && env.TEST_FAILED == 'false' && secrets.SMTP_SERVER != '' && secrets.SMTP_USERNAME != '' && secrets.SMTP_PASSWORD != '' && secrets.EMAIL_FROM != '' && secrets.EMAIL_TO != ''
+        if: always() && env.TEST_FAILED == 'false' && env.SMTP_SERVER != '' && env.SMTP_USERNAME != '' && env.SMTP_PASSWORD != '' && env.EMAIL_FROM != '' && env.EMAIL_TO != ''
         uses: dawidd6/action-send-mail@v3
         with:
-          server_address: ${{ secrets.SMTP_SERVER }}
-          server_port: ${{ secrets.SMTP_PORT }}
+          server_address: ${{ env.SMTP_SERVER }}
+          server_port: ${{ env.SMTP_PORT }}
           secure: false
-          username: ${{ secrets.SMTP_USERNAME }}
-          password: ${{ secrets.SMTP_PASSWORD }}
+          username: ${{ env.SMTP_USERNAME }}
+          password: ${{ env.SMTP_PASSWORD }}
           subject: "[${{ matrix.java-version }}] Selenium Tests PASSED - ${{ github.repository }}"
-          to: ${{ secrets.EMAIL_TO }}
-          from: ${{ secrets.EMAIL_FROM }}
+          to: ${{ env.EMAIL_TO }}
+          from: ${{ env.EMAIL_FROM }}
           html_body: |
             <h2>:white_check_mark: Selenium Tests PASSED</h2>
             <p><strong>Repo:</strong> ${{ github.repository }}<br>
@@ -273,17 +281,17 @@ jobs:
             <p><a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View Workflow Run</a></p>
 
       - name: Email Notification - Failure
-        if: always() && env.TEST_FAILED == 'true' && secrets.SMTP_SERVER != '' && secrets.SMTP_USERNAME != '' && secrets.SMTP_PASSWORD != '' && secrets.EMAIL_FROM != '' && secrets.EMAIL_TO != ''
+        if: always() && env.TEST_FAILED == 'true' && env.SMTP_SERVER != '' && env.SMTP_USERNAME != '' && env.SMTP_PASSWORD != '' && env.EMAIL_FROM != '' && env.EMAIL_TO != ''
         uses: dawidd6/action-send-mail@v3
         with:
-          server_address: ${{ secrets.SMTP_SERVER }}
-          server_port: ${{ secrets.SMTP_PORT }}
+          server_address: ${{ env.SMTP_SERVER }}
+          server_port: ${{ env.SMTP_PORT }}
           secure: false
-          username: ${{ secrets.SMTP_USERNAME }}
-          password: ${{ secrets.SMTP_PASSWORD }}
+          username: ${{ env.SMTP_USERNAME }}
+          password: ${{ env.SMTP_PASSWORD }}
           subject: "[${{ matrix.java-version }}] Selenium Tests FAILED - ${{ github.repository }}"
-          to: ${{ secrets.EMAIL_TO }}
-          from: ${{ secrets.EMAIL_FROM }}
+          to: ${{ env.EMAIL_TO }}
+          from: ${{ env.EMAIL_FROM }}
           html_body: |
             <h2>:x: Selenium Tests FAILED</h2>
             <p><strong>Repo:</strong> ${{ github.repository }}<br>
