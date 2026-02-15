@@ -12,9 +12,9 @@ jobs:
     runs-on: ubuntu-latest
 
     strategy:
-      fail-fast: false   # 🔥 prevents matrix cancellation
+      fail-fast: false
       matrix:
-        java-version: [ '11', '17' ]
+        java-version: [ "11", "17" ]
 
     steps:
       - name: Checkout Code
@@ -30,30 +30,22 @@ jobs:
       - name: Install Dependencies
         run: mvn clean install -DskipTests
 
-      # 🔑 Run tests and capture exit code
       - name: Run Selenium Tests
         id: selenium_tests
         continue-on-error: true
         run: |
+          set +e
           mvn test -B -V
-          if [ $? -ne 0 ]; then
+          TEST_EXIT=$?
+          set -e
+
+          if [ $TEST_EXIT -ne 0 ]; then
             echo "TEST_FAILED=true" >> $GITHUB_ENV
           else
             echo "TEST_FAILED=false" >> $GITHUB_ENV
           fi
+          echo "TEST_EXIT_CODE=$TEST_EXIT" >> $GITHUB_ENV
 
-      # 🔍 Check report directory
-      - name: Check Test Reports
-        id: check_reports
-        continue-on-error: true
-        run: |
-          if [ -d target/surefire-reports ]; then
-            echo "REPORTS_EXIST=true" >> $GITHUB_ENV
-          else
-            echo "REPORTS_EXIST=false" >> $GITHUB_ENV
-          fi
-
-      # 📦 Upload reports only if they exist
       - name: Upload Test Reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -63,25 +55,24 @@ jobs:
           path: target/surefire-reports
           retention-days: 30
 
-      # 📋 Generate Test Summary
       - name: Generate Test Summary
         if: always()
         continue-on-error: true
         run: |
           echo "## Test Execution Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ -d target/surefire-reports ]; then
-            echo "### Test Reports Generated" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Reports Location:** \`target/surefire-reports/\`" >> $GITHUB_STEP_SUMMARY
-            if [ -f target/surefire-reports/index.html ]; then
-              echo "- HTML Report available" >> $GITHUB_STEP_SUMMARY
-            fi
-          fi
-          echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Java Version:** ${{ matrix.java-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Test Exit Code:** $TEST_EXIT_CODE" >> $GITHUB_STEP_SUMMARY
 
-      # 📸 Upload screenshots only if they exist
+          if [ -d target/surefire-reports ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Test Reports Generated" >> $GITHUB_STEP_SUMMARY
+            echo "**Reports Location:** \`target/surefire-reports/\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "No surefire reports directory found." >> $GITHUB_STEP_SUMMARY
+          fi
+
       - name: Upload Screenshots
         if: always()
         uses: actions/upload-artifact@v4
@@ -93,22 +84,18 @@ jobs:
             screenshots/**/*.png
           retention-days: 30
 
-      # 📊 Parse Test Results
       - name: Parse Test Results
         if: always()
         continue-on-error: true
         run: |
+          > /tmp/test_results.txt
+
           if [ -d target/surefire-reports ]; then
-            # Install xmlstarlet
             sudo apt-get update -qq && sudo apt-get install -y -qq xmlstarlet > /dev/null 2>&1
-            
-            # Create results file
-            > /tmp/test_results.txt
-            
-            # Parse XML files
+
+            > /tmp/all_tests.txt
             for xml_file in target/surefire-reports/TEST-*.xml; do
               if [ -f "$xml_file" ]; then
-                # Get all testcase elements, filter out setUp/tearDown
                 xmlstarlet sel -t \
                   -m "//testcase" \
                   -v "@name" -o "|" \
@@ -120,14 +107,10 @@ jobs:
                   "$xml_file" 2>/dev/null >> /tmp/all_tests.txt
               fi
             done
-            
-            # Filter and format results
+
             if [ -f /tmp/all_tests.txt ]; then
               grep -v "setUp\|tearDown\|setUpClass\|tearDownClass" /tmp/all_tests.txt | while IFS='|' read -r name time status; do
-                # Round time to 1 decimal
                 rounded_time=$(printf "%.1f" "$time" 2>/dev/null || echo "$time")
-                
-                # Add status emoji
                 if [ "$status" = "PASS" ]; then
                   echo "PASS $name (${rounded_time}s)"
                 elif [ "$status" = "FAIL" ]; then
@@ -137,53 +120,55 @@ jobs:
                 fi
               done > /tmp/test_results.txt
             fi
-            
-            # Get counts
-            TOTAL=$(wc -l < /tmp/test_results.txt)
-            PASSED=$(grep -c "^PASS" /tmp/test_results.txt || echo 0)
-            FAILED=$(grep -c "^FAIL\|^ERROR" /tmp/test_results.txt || echo 0)
-            
-            # Limit to first 20 results
-            RESULTS=$(head -20 /tmp/test_results.txt)
-            if [ $TOTAL -gt 20 ]; then
-              RESULTS="$RESULTS"$'\n'"... and $((TOTAL - 20)) more tests"
-            fi
-            
-            # Save to env (escape for JSON)
-            echo "TEST_RESULTS<<EOFMARKER" >> $GITHUB_ENV
-            echo "$RESULTS" >> $GITHUB_ENV
-            echo "EOFMARKER" >> $GITHUB_ENV
-            
-            echo "TOTAL_TESTS=$TOTAL" >> $GITHUB_ENV
-            echo "PASSED_TESTS=$PASSED" >> $GITHUB_ENV
-            echo "FAILED_TESTS=$FAILED" >> $GITHUB_ENV
-          else
-            echo "TEST_RESULTS=No test reports found" >> $GITHUB_ENV
-            echo "TOTAL_TESTS=0" >> $GITHUB_ENV
-            echo "PASSED_TESTS=0" >> $GITHUB_ENV
-            echo "FAILED_TESTS=0" >> $GITHUB_ENV
           fi
 
-      # ✅ Slack PASS
-      - name: Slack Notification - Success
-        if: success()
+          TOTAL=$(wc -l < /tmp/test_results.txt)
+          PASSED=$(grep -c "^PASS" /tmp/test_results.txt || echo 0)
+          FAILED=$(grep -c "^FAIL\|^ERROR" /tmp/test_results.txt || echo 0)
+
+          RESULTS=$(head -20 /tmp/test_results.txt)
+          if [ "$TOTAL" -gt 20 ]; then
+            RESULTS="$RESULTS"$'\n'"... and $((TOTAL - 20)) more tests"
+          fi
+          if [ -z "$RESULTS" ]; then
+            RESULTS="No parsed test case results found."
+          fi
+
+          echo "TEST_RESULTS<<EOFMARKER" >> $GITHUB_ENV
+          echo "$RESULTS" >> $GITHUB_ENV
+          echo "EOFMARKER" >> $GITHUB_ENV
+          echo "TOTAL_TESTS=$TOTAL" >> $GITHUB_ENV
+          echo "PASSED_TESTS=$PASSED" >> $GITHUB_ENV
+          echo "FAILED_TESTS=$FAILED" >> $GITHUB_ENV
+
+      - name: Format Notification Payload
+        if: always()
         run: |
-          # Format results for Slack (add checkmarks)
-          FORMATTED=$(echo "$TEST_RESULTS" | sed 's/^PASS /✅ /g' | sed 's/^FAIL /❌ /g' | sed 's/^ERROR /❌ /g')
-          
-          # Escape for JSON
-          ESCAPED=$(echo "$FORMATTED" | jq -Rs .)
-          
+          FORMATTED=$(echo "$TEST_RESULTS" | sed 's/^PASS /:white_check_mark: /g' | sed 's/^FAIL /:x: /g' | sed 's/^ERROR /:x: /g')
+          echo "FORMATTED_RESULTS<<EOFMARKER" >> $GITHUB_ENV
+          echo "$FORMATTED" >> $GITHUB_ENV
+          echo "EOFMARKER" >> $GITHUB_ENV
+
+          EMAIL_RESULTS=$(echo "$FORMATTED" | sed ':a;N;$!ba;s/\n/<br>/g')
+          echo "EMAIL_RESULTS<<EOFMARKER" >> $GITHUB_ENV
+          echo "$EMAIL_RESULTS" >> $GITHUB_ENV
+          echo "EOFMARKER" >> $GITHUB_ENV
+
+      - name: Slack Notification - Success
+        if: always() && env.TEST_FAILED == 'false' && secrets.SLACK_WEBHOOK_URL != ''
+        continue-on-error: true
+        run: |
+          ESCAPED=$(echo "$FORMATTED_RESULTS" | jq -Rs .)
           curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
           -H 'Content-Type: application/json' \
           -d '{
-            "text": "✅ Selenium Tests PASSED",
+            "text": ":white_check_mark: Selenium Tests PASSED",
             "blocks": [
               {
                 "type": "header",
                 "text": {
                   "type": "plain_text",
-                  "text": "✅ Selenium Tests PASSED"
+                  "text": "Selenium Tests PASSED"
                 }
               },
               {
@@ -197,14 +182,14 @@ jobs:
                 "type": "section",
                 "text": {
                   "type": "mrkdwn",
-                  "text": "*Test Summary:* '"$PASSED_TESTS"'/'"$TOTAL_TESTS"' passed ✅"
+                  "text": "*Test Summary:* '"$PASSED_TESTS"'/'"$TOTAL_TESTS"' passed :white_check_mark:"
                 }
               },
               {
                 "type": "section",
                 "text": {
                   "type": "mrkdwn",
-                  "text": "*Test Results:*\n```'"$(echo $ESCAPED | jq -r .)"'```"
+                  "text": "*Test Results:*\n```'"$(echo "$ESCAPED" | jq -r .)"'```"
                 }
               },
               {
@@ -217,26 +202,21 @@ jobs:
             ]
           }'
 
-      # ❌ Slack FAIL
       - name: Slack Notification - Failure
-        if: failure()
+        if: always() && env.TEST_FAILED == 'true' && secrets.SLACK_WEBHOOK_URL != ''
+        continue-on-error: true
         run: |
-          # Format results for Slack (add checkmarks)
-          FORMATTED=$(echo "$TEST_RESULTS" | sed 's/^PASS /✅ /g' | sed 's/^FAIL /❌ /g' | sed 's/^ERROR /❌ /g')
-          
-          # Escape for JSON
-          ESCAPED=$(echo "$FORMATTED" | jq -Rs .)
-          
+          ESCAPED=$(echo "$FORMATTED_RESULTS" | jq -Rs .)
           curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
           -H 'Content-Type: application/json' \
           -d '{
-            "text": "❌ Selenium Tests FAILED",
+            "text": ":x: Selenium Tests FAILED",
             "blocks": [
               {
                 "type": "header",
                 "text": {
                   "type": "plain_text",
-                  "text": "❌ Selenium Tests FAILED"
+                  "text": "Selenium Tests FAILED"
                 }
               },
               {
@@ -250,14 +230,14 @@ jobs:
                 "type": "section",
                 "text": {
                   "type": "mrkdwn",
-                  "text": "*Test Summary:* '"$PASSED_TESTS"' passed, '"$FAILED_TESTS"' failed ('"$TOTAL_TESTS"' total) ⚠️"
+                  "text": "*Test Summary:* '"$PASSED_TESTS"' passed, '"$FAILED_TESTS"' failed ('"$TOTAL_TESTS"' total) :warning:"
                 }
               },
               {
                 "type": "section",
                 "text": {
                   "type": "mrkdwn",
-                  "text": "*Test Results:*\n```'"$(echo $ESCAPED | jq -r .)"'```"
+                  "text": "*Test Results:*\n```'"$(echo "$ESCAPED" | jq -r .)"'```"
                 }
               },
               {
@@ -269,3 +249,53 @@ jobs:
               }
             ]
           }'
+
+      - name: Email Notification - Success
+        if: always() && env.TEST_FAILED == 'false' && secrets.SMTP_SERVER != '' && secrets.SMTP_USERNAME != '' && secrets.SMTP_PASSWORD != '' && secrets.EMAIL_FROM != '' && secrets.EMAIL_TO != ''
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          secure: false
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "[${{ matrix.java-version }}] Selenium Tests PASSED - ${{ github.repository }}"
+          to: ${{ secrets.EMAIL_TO }}
+          from: ${{ secrets.EMAIL_FROM }}
+          html_body: |
+            <h2>:white_check_mark: Selenium Tests PASSED</h2>
+            <p><strong>Repo:</strong> ${{ github.repository }}<br>
+            <strong>Branch:</strong> ${{ github.ref_name }}<br>
+            <strong>Java:</strong> ${{ matrix.java-version }}<br>
+            <strong>Commit:</strong> <code>${{ github.sha }}</code></p>
+            <p><strong>Test Summary:</strong> ${{ env.PASSED_TESTS }}/${{ env.TOTAL_TESTS }} passed :white_check_mark:</p>
+            <p><strong>Test Results:</strong><br>${{ env.EMAIL_RESULTS }}</p>
+            <p><a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View Workflow Run</a></p>
+
+      - name: Email Notification - Failure
+        if: always() && env.TEST_FAILED == 'true' && secrets.SMTP_SERVER != '' && secrets.SMTP_USERNAME != '' && secrets.SMTP_PASSWORD != '' && secrets.EMAIL_FROM != '' && secrets.EMAIL_TO != ''
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          secure: false
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "[${{ matrix.java-version }}] Selenium Tests FAILED - ${{ github.repository }}"
+          to: ${{ secrets.EMAIL_TO }}
+          from: ${{ secrets.EMAIL_FROM }}
+          html_body: |
+            <h2>:x: Selenium Tests FAILED</h2>
+            <p><strong>Repo:</strong> ${{ github.repository }}<br>
+            <strong>Branch:</strong> ${{ github.ref_name }}<br>
+            <strong>Java:</strong> ${{ matrix.java-version }}<br>
+            <strong>Commit:</strong> <code>${{ github.sha }}</code></p>
+            <p><strong>Test Summary:</strong> ${{ env.PASSED_TESTS }} passed, ${{ env.FAILED_TESTS }} failed (${{ env.TOTAL_TESTS }} total) :warning:</p>
+            <p><strong>Test Results:</strong><br>${{ env.EMAIL_RESULTS }}</p>
+            <p><a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View Full Logs &amp; Screenshots</a></p>
+
+      - name: Fail Job If Tests Failed
+        if: always() && env.TEST_FAILED == 'true'
+        run: |
+          echo "One or more Selenium tests failed."
+          exit 1

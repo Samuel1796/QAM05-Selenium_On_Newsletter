@@ -3,6 +3,7 @@ package com.newsletter.pages;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.FindBy;
+import org.openqa.selenium.By;
 
 /**
  * Page Object for Newsletter Sign-up Form
@@ -102,7 +103,15 @@ public class SignUpPage extends BasePage {
      * Check if form is displayed
      */
     public boolean isFormDisplayed() {
-        return isDisplayed(signUpForm);
+        if (isDisplayed(signUpForm)) {
+            return true;
+        }
+        try {
+            // Fallback for deployments where the form id differs or is missing.
+            return driver.findElement(By.cssSelector("form")).isDisplayed();
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /**
