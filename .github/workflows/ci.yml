@@ -46,12 +46,6 @@ jobs:
           mvn test -B -V
           TEST_EXIT=$?
           set -e
-
-          if [ $TEST_EXIT -ne 0 ]; then
-            echo "TEST_FAILED=true" >> $GITHUB_ENV
-          else
-            echo "TEST_FAILED=false" >> $GITHUB_ENV
-          fi
           echo "TEST_EXIT_CODE=$TEST_EXIT" >> $GITHUB_ENV
 
       - name: Upload Test Reports
@@ -172,10 +166,13 @@ jobs:
           echo "PASSED_TESTS=$PASSED" >> $GITHUB_ENV
           echo "FAILED_TESTS=$FAILED" >> $GITHUB_ENV
           if [ "$FAILED" -gt 0 ]; then
+            echo "TEST_FAILED=true" >> $GITHUB_ENV
             echo "FAIL_REASON=test_failures" >> $GITHUB_ENV
-          elif [ "${TEST_FAILED:-false}" = "true" ]; then
+          elif [ "${TEST_EXIT_CODE:-0}" -ne 0 ] && [ "$TOTAL" -eq 0 ]; then
+            echo "TEST_FAILED=true" >> $GITHUB_ENV
             echo "FAIL_REASON=build_error" >> $GITHUB_ENV
           else
+            echo "TEST_FAILED=false" >> $GITHUB_ENV
             echo "FAIL_REASON=none" >> $GITHUB_ENV
           fi
 
@@ -195,6 +192,11 @@ jobs:
             echo "FAIL_SUMMARY=${PASSED_TESTS} passed, ${FAILED_TESTS} failed (${TOTAL_TESTS} total) :warning:" >> $GITHUB_ENV
           else
             echo "FAIL_SUMMARY=${PASSED_TESTS} passed, ${FAILED_TESTS} failed (${TOTAL_TESTS} total). Build failed with exit code ${TEST_EXIT_CODE}." >> $GITHUB_ENV
+          fi
+          if [ "${TEST_EXIT_CODE:-0}" -ne 0 ] && [ "${FAILED_TESTS:-0}" -eq 0 ] && [ "${TOTAL_TESTS:-0}" -gt 0 ]; then
+            echo "PASS_SUMMARY=${PASSED_TESTS}/${TOTAL_TESTS} passed :white_check_mark: (non-test Maven exit code ${TEST_EXIT_CODE})" >> $GITHUB_ENV
+          else
+            echo "PASS_SUMMARY=${PASSED_TESTS}/${TOTAL_TESTS} passed :white_check_mark:" >> $GITHUB_ENV
           fi
 
       - name: Slack Notification - Success
@@ -225,7 +227,7 @@ jobs:
                 "type": "section",
                 "text": {
                   "type": "mrkdwn",
-                  "text": "*Test Summary:* '"$PASSED_TESTS"'/'"$TOTAL_TESTS"' passed :white_check_mark:"
+                  "text": "*Test Summary:* '"$PASS_SUMMARY"'"
                 }
               },
               {
@@ -311,7 +313,7 @@ jobs:
             <strong>Branch:</strong> ${{ github.ref_name }}<br>
             <strong>Java:</strong> ${{ matrix.java-version }}<br>
             <strong>Commit:</strong> <code>${{ github.sha }}</code></p>
-            <p><strong>Test Summary:</strong> ${{ env.PASSED_TESTS }}/${{ env.TOTAL_TESTS }} passed :white_check_mark:</p>
+            <p><strong>Test Summary:</strong> ${{ env.PASS_SUMMARY }}</p>
             <p><strong>Test Results:</strong><br>${{ env.EMAIL_RESULTS }}</p>
             <p><a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View Workflow Run</a></p>
 
