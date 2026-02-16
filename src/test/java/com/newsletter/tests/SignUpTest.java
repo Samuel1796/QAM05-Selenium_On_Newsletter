@@ -3,14 +3,21 @@ package com.newsletter.tests;
 import com.newsletter.pages.SignUpPage;
 import com.newsletter.pages.SuccessPage;
 import com.newsletter.utils.Utils;
-import org.testng.annotations.*;
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.Arguments;
 
-import static org.testng.Assert.*;
+import java.util.logging.Logger;
+import java.util.stream.Stream;
 
+import static org.junit.jupiter.api.Assertions.*;
 
 public class SignUpTest extends BaseTest {
     protected SignUpPage signUpPage;
     protected SuccessPage successPage;
+    private static final Logger logger = Logger.getLogger(SignUpTest.class.getName());
 
     /**
      * Asserts that a client-side validation error is shown for invalid submission attempts.
@@ -34,37 +41,49 @@ public class SignUpTest extends BaseTest {
         }
     }
 
-    @BeforeMethod
+    @BeforeEach
     @Override
     public void setUp() {
         super.setUp();
+        logger.info("Initializing page objects for SignUp tests.");
         signUpPage = new SignUpPage(driver);
         successPage = new SuccessPage(driver);
     }
 
-
+    @AfterEach
+    @Override
+    public void tearDown() {
+        logger.info("Cleaning up after SignUp test.");
+        super.tearDown();
+    }
 
     /**
      * Verifies that a syntactically valid email results in a successful subscription.
      *
      * <p>Expected result: user is redirected to the success screen (or success content becomes visible).</p>
      */
-    @Test(description = "Verify Successful Newsletter Subscription with Valid Email")
+    @Test
+    @DisplayName("Verify Successful Newsletter Subscription with Valid Email")
+    @Tag("signup")
+    @Tag("positive")
     public void testSuccessfulSubscriptionWithValidEmail() {
+        logger.info("Running testSuccessfulSubscriptionWithValidEmail");
         signUpPage.navigateToPage();
         signUpPage.completeSignUp(Utils.generateRandomEmail());
         assertTrue(successPage.isOnSuccessPage(), "Subscription should be successful with valid email");
     }
-
 
     /**
      * Verifies that an invalid email format does not allow subscription.
      *
      * <p>Expected result: user stays on the sign-up form. (Optionally, UI shows a validation error.)</p>
      */
-    @Test(description = "Verify Error Message for Invalid Email Format")
-
+    @Test
+    @DisplayName("Verify Error Message for Invalid Email Format")
+    @Tag("signup")
+    @Tag("negative")
     public void testInvalidEmailFormat() {
+        logger.info("Running testInvalidEmailFormat");
         signUpPage.navigateToPage();
         signUpPage.completeSignUp("invalid-email");
         assertTrue(signUpPage.isOnSignUpPage(),
@@ -78,8 +97,12 @@ public class SignUpTest extends BaseTest {
      *
      * <p>Expected result: user remains on the sign-up form (no success navigation).</p>
      */
-    @Test(description = "Verify Error Message for Empty Email Field")
+    @Test
+    @DisplayName("Verify Error Message for Empty Email Field")
+    @Tag("signup")
+    @Tag("negative")
     public void testEmptyEmailField() {
+        logger.info("Running testEmptyEmailField");
         signUpPage.navigateToPage();
         signUpPage.clickSubscribe();
         assertTrue(signUpPage.isOnSignUpPage(),
@@ -88,21 +111,18 @@ public class SignUpTest extends BaseTest {
         assertValidationErrorContains("email", "required");
     }
 
-
     /**
      * Provides a small random subset of invalid email strings for negative testing.
      *
      * <p>We keep the dataset small to balance coverage and runtime in CI.</p>
      *
-     * @return TestNG data provider containing invalid email inputs
+     * @return stream of invalid email inputs
      */
-    @DataProvider(name = "invalidEmails")
-
-    public Object[][] invalidEmailProvider() {
+    static Stream<Arguments> invalidEmailProvider() {
         // Generate random pool of invalid emails and select 3 for testing
-        return Utils.getRandomInvalidEmails(3);
+        Object[][] raw = Utils.getRandomInvalidEmails(3);
+        return Stream.of(raw).map(args -> Arguments.of(args[0]));
     }
-
 
     /**
      * Verifies that multiple invalid email patterns are rejected.
@@ -111,9 +131,13 @@ public class SignUpTest extends BaseTest {
      *
      * @param invalidEmail invalid email string supplied by the data provider
      */
-    @Test(description = "Verify Form Validation with Multiple Invalid Email Formats", dataProvider = "invalidEmails")
-
+    @ParameterizedTest(name = "Invalid email should be rejected: {0}")
+    @MethodSource("invalidEmailProvider")
+    @DisplayName("Verify Form Validation with Multiple Invalid Email Formats")
+    @Tag("signup")
+    @Tag("negative")
     public void testMultipleInvalidEmailFormats(String invalidEmail) {
+        logger.info(() -> "Running testMultipleInvalidEmailFormats with invalidEmail=" + invalidEmail);
         signUpPage.navigateToPage();
         signUpPage.enterEmail(invalidEmail);
         signUpPage.clickSubscribe();
@@ -125,13 +149,12 @@ public class SignUpTest extends BaseTest {
     /**
      * Provides a random subset of valid email strings for positive coverage.
      *
-     * @return TestNG data provider containing valid email inputs
+     * @return stream of valid email inputs
      */
-    @DataProvider(name = "validEmails")
-
-    public Object[][] validEmailProvider() {
+    static Stream<Arguments> validEmailProvider() {
         // Generate random pool of 6 emails and select 3 for testing
-        return Utils.getRandomEmails(6, 3);
+        Object[][] raw = Utils.getRandomEmails(6, 3);
+        return Stream.of(raw).map(args -> Arguments.of(args[0]));
     }
 
     /**
@@ -141,30 +164,34 @@ public class SignUpTest extends BaseTest {
      *
      * @param validEmail valid email string supplied by the data provider
      */
-    @Test(description = "Verify Successful Subscription with Various Valid Email Formats",
-            dataProvider = "validEmails")
-
+    @ParameterizedTest(name = "Valid email should be accepted: {0}")
+    @MethodSource("validEmailProvider")
+    @DisplayName("Verify Successful Subscription with Various Valid Email Formats")
+    @Tag("signup")
+    @Tag("positive")
     public void testValidEmailFormats(String validEmail) {
+        logger.info(() -> "Running testValidEmailFormats with validEmail=" + validEmail);
         signUpPage.navigateToPage();
         signUpPage.completeSignUp(validEmail);
         assertTrue(successPage.isOnSuccessPage(), "Should accept valid email format: " + validEmail);
     }
-
 
     /**
      * Sanity check that the subscribe button is present and can be clicked.
      *
      * <p>This is a lightweight UI smoke test (it does not assert success).</p>
      */
-    @Test(description = "Verify Subscribe Button is Clickable")
-
+    @Test
+    @DisplayName("Verify Subscribe Button is Clickable")
+    @Tag("signup")
+    @Tag("smoke")
     public void testSubscribeButtonIsClickable() {
+        logger.info("Running testSubscribeButtonIsClickable");
         signUpPage.navigateToPage();
 
         assertTrue(signUpPage.isSubscribeButtonDisplayed(), "Subscribe button should be displayed");
         signUpPage.clickSubscribe();
     }
-
 
     /**
      * Verifies input behaviour across a browser refresh.
@@ -172,11 +199,14 @@ public class SignUpTest extends BaseTest {
      * <p><strong>Note:</strong> persisting values across refresh is a product decision. Many apps clear the form
      * on refresh. If your target behaviour is to clear inputs, change the expected assertion accordingly.</p>
      */
-    @Test(description = "Verify Email Input Persists After Page Refresh")
-
+    @Test
+    @DisplayName("Verify Email Input Persists After Page Refresh")
+    @Tag("signup")
+    @Tag("regression")
     public void testFormPersistenceAfterRefresh() {
+        logger.info("Running testFormPersistenceAfterRefresh");
         signUpPage.navigateToPage();
-        
+
         // Enter an email into the input field
         String testEmail = Utils.generateRandomEmail();
         signUpPage.enterEmail(testEmail);
@@ -191,7 +221,7 @@ public class SignUpTest extends BaseTest {
         assertTrue(signUpPage.isEmailInputDisplayed(), "Email input should be displayed after refresh");
         assertTrue(signUpPage.isFormDisplayed() || signUpPage.isEmailInputDisplayed(),
                 "Form should be displayed after refresh");
-        
+
         // Check if the email value persists after refresh
         String emailAfterRefresh = signUpPage.getEmailInputValue();
         assertEquals(emailAfterRefresh, testEmail, "Email input value should persist after page refresh");
@@ -203,9 +233,12 @@ public class SignUpTest extends BaseTest {
      * <p>Improvement opportunity: assert {@code maxlength} or a specific validation message if the product
      * defines strict limits.</p>
      */
-    @Test(description = "Verify Maximum Length of Email Input")
-
+    @Test
+    @DisplayName("Verify Maximum Length of Email Input")
+    @Tag("signup")
+    @Tag("regression")
     public void testEmailInputMaxLength() {
+        logger.info("Running testEmailInputMaxLength");
         signUpPage.navigateToPage();
 
         StringBuilder sb = new StringBuilder();
@@ -219,63 +252,71 @@ public class SignUpTest extends BaseTest {
                 "Email input should handle long email addresses");
     }
 
-
     /**
      * Verifies that commonly valid email characters are accepted (e.g. dot and plus tag).
      *
      * <p>Expected result: valid email variant should reach the success screen.</p>
      */
-    @Test(description = "Verify Special Characters in Email")
-
+    @Test
+    @DisplayName("Verify Special Characters in Email")
+    @Tag("signup")
+    @Tag("positive")
     public void testSpecialCharactersInEmail() {
+        logger.info("Running testSpecialCharactersInEmail");
         signUpPage.navigateToPage();
         // Explicitly use a realistic "special" email pattern rather than a random generator.
         signUpPage.completeSignUp("john.doe+tag@example.com");
         assertTrue(successPage.isOnSuccessPage(), "Should accept email with valid characters");
     }
 
-
     /**
      * Verifies the form behaviour when users paste an email with leading/trailing spaces.
      *
      * <p>Expected result: app trims input (or otherwise accepts it) and successfully subscribes.</p>
      */
-    @Test(description = "Verify Form Behavior with Leading/Trailing Spaces")
-
+    @Test
+    @DisplayName("Verify Form Behavior with Leading/Trailing Spaces")
+    @Tag("signup")
+    @Tag("positive")
     public void testEmailWithSpaces() {
+        logger.info("Running testEmailWithSpaces");
         signUpPage.navigateToPage();
         signUpPage.completeSignUp("  " + Utils.generateRandomEmail() + "  ");
         assertTrue(successPage.isOnSuccessPage(), "Form should handle leading/trailing spaces");
     }
-
 
     /**
      * Verifies that the success screen reflects the subscribed email back to the user.
      *
      * <p>Expected result: confirmation text contains the input email.</p>
      */
-    @Test(description = "Verify Success Page Displays Correct Email After Subscription")
-
+    @Test
+    @DisplayName("Verify Success Page Displays Correct Email After Subscription")
+    @Tag("signup")
+    @Tag("regression")
     public void testSuccessPageDisplaysEmail() {
+        logger.info("Running testSuccessPageDisplaysEmail");
         String testEmail = Utils.generateRandomEmail();
         signUpPage.navigateToPage();
         signUpPage.completeSignUp(testEmail);
 
         assertTrue(successPage.isOnSuccessPage(), "Should redirect to success page");
         String displayedEmail = successPage.getEmailConfirmation();
-        assertTrue(displayedEmail.contains(testEmail), 
+        assertTrue(displayedEmail.contains(testEmail),
                 "Success page should display subscribed email: " + testEmail);
     }
-
 
     /**
      * Verifies that the validation error state is not "sticky".
      *
      * <p>Flow: submit invalid email → error appears → replace with valid email → error disappears.</p>
      */
-    @Test(description = "Verify Error Message Disappears When Valid Email Entered")
-
+    @Test
+    @DisplayName("Verify Error Message Disappears When Valid Email Entered")
+    @Tag("signup")
+    @Tag("negative")
     public void testErrorMessageClearsOnValidEmail() {
+        logger.info("Running testErrorMessageClearsOnValidEmail");
         signUpPage.navigateToPage();
         signUpPage.completeSignUp("invalid");
         assertTrue(signUpPage.waitForErrorMessageToBeVisible(), "Error should be displayed for invalid email");
@@ -285,15 +326,17 @@ public class SignUpTest extends BaseTest {
         assertTrue(signUpPage.waitForErrorMessageToDisappear(), "Error message should no longer be displayed");
     }
 
-
     /**
      * Verifies that the "Dismiss" action on the success screen returns the user to the sign-up form.
      *
      * <p>Expected result: sign-up form becomes visible again after dismissal.</p>
      */
-    @Test(description = "Verify Dismiss Button Returns to Form")
-
+    @Test
+    @DisplayName("Verify Dismiss Button Returns to Form")
+    @Tag("signup")
+    @Tag("regression")
     public void testDismissSuccessMessage() {
+        logger.info("Running testDismissSuccessMessage");
         signUpPage.navigateToPage();
         signUpPage.completeSignUp(Utils.generateRandomEmail());
         assertTrue(successPage.isOnSuccessPage(), "Should be on success page");
@@ -303,12 +346,5 @@ public class SignUpTest extends BaseTest {
         // Re-initialize to get fresh element references
         signUpPage = new SignUpPage(driver);
         assertTrue(signUpPage.isOnSignUpPage(), "Should return to sign-up form");
-    }
-
-
-    @AfterMethod
-    @Override
-    public void tearDown() {
-        super.tearDown();
     }
 }
