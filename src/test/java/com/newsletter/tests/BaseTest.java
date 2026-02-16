@@ -58,19 +58,5 @@ public class BaseTest {
         }
     }
 
-    /**
-     * Sleeps the current thread for a given amount of time.
-     *
-     * <p><strong>Note:</strong> Prefer explicit waits in Page Objects over hard sleeps to keep tests
-     * deterministic and fast. This helper remains for rare cases where a fixed delay is required.</p>
-     *
-     * @param milliseconds how long to sleep
-     */
-    protected void waitFor(long milliseconds) {
-        try {
-            Thread.sleep(milliseconds);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-    }
+
 }
