@@ -96,18 +96,17 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
+          > /tmp/all_tests.txt
+          > /tmp/all_tests_filtered.txt
+          > /tmp/unique_tests.txt
           > /tmp/test_results.txt
           TOTAL=0
           PASSED=0
           FAILED=0
-          FAILURES=0
-          ERRORS=0
-          SKIPPED=0
 
           if [ -d target/surefire-reports ]; then
             sudo apt-get update -qq && sudo apt-get install -y -qq xmlstarlet > /dev/null 2>&1
 
-            > /tmp/all_tests.txt
             for xml_file in target/surefire-reports/TEST-*.xml; do
               if [ -f "$xml_file" ]; then
                 xmlstarlet sel -t \
@@ -120,28 +119,38 @@ jobs:
               fi
             done
 
-            if [ -f /tmp/all_tests.txt ]; then
-              grep -v "setUp\|tearDown\|setUpClass\|tearDownClass" /tmp/all_tests.txt | while IFS='|' read -r name time status; do
-                rounded_time=$(printf "%.1f" "$time" 2>/dev/null || echo "$time")
-                if [ "$status" = "failure" ]; then
-                  echo "FAIL $name (${rounded_time}s)"
-                elif [ "$status" = "error" ]; then
-                  echo "ERROR $name (${rounded_time}s)"
-                else
-                  echo "PASS $name (${rounded_time}s)"
-                fi
-              done > /tmp/test_results.txt
-            fi
+            if [ -s /tmp/all_tests.txt ]; then
+              grep -v "setUp\|tearDown\|setUpClass\|tearDownClass" /tmp/all_tests.txt > /tmp/all_tests_filtered.txt || true
 
-            TOTAL=$(xmlstarlet sel -t -v "sum(//testsuite/@tests)" target/surefire-reports/TEST-*.xml 2>/dev/null | awk '{printf "%.0f", $1}')
-            FAILURES=$(xmlstarlet sel -t -v "sum(//testsuite/@failures)" target/surefire-reports/TEST-*.xml 2>/dev/null | awk '{printf "%.0f", $1}')
-            ERRORS=$(xmlstarlet sel -t -v "sum(//testsuite/@errors)" target/surefire-reports/TEST-*.xml 2>/dev/null | awk '{printf "%.0f", $1}')
-            SKIPPED=$(xmlstarlet sel -t -v "sum(//testsuite/@skipped)" target/surefire-reports/TEST-*.xml 2>/dev/null | awk '{printf "%.0f", $1}')
-            FAILED=$((FAILURES + ERRORS))
-            PASSED=$((TOTAL - FAILED - SKIPPED))
-            if [ "$PASSED" -lt 0 ]; then PASSED=0; fi
+              awk -F'|' '
+                function rank(s) { return (s=="ERROR" ? 3 : (s=="FAIL" ? 2 : 1)); }
+                {
+                  name=$1;
+                  time=$2 + 0;
+                  raw=tolower($3);
+                  status=(raw=="failure" ? "FAIL" : (raw=="error" ? "ERROR" : "PASS"));
+                  if (!(name in best) || rank(status) > rank(best[name])) {
+                    best[name]=status;
+                    t[name]=time;
+                  }
+                }
+                END {
+                  for (n in best) {
+                    printf "%s|%s|%.1f\n", n, best[n], t[n];
+                  }
+                }
+              ' /tmp/all_tests_filtered.txt | sort > /tmp/unique_tests.txt
+
+              while IFS='|' read -r name status rounded_time; do
+                [ -z "$name" ] && continue
+                echo "$status $name (${rounded_time}s)"
+              done < /tmp/unique_tests.txt > /tmp/test_results.txt
+            fi
           fi
 
+          TOTAL=$(wc -l < /tmp/unique_tests.txt)
+          PASSED=$(grep -c "|PASS|" /tmp/unique_tests.txt || echo 0)
+          FAILED=$(grep -Ec "\\|(FAIL|ERROR)\\|" /tmp/unique_tests.txt || echo 0)
           if [ "$TOTAL" -eq 0 ]; then
             TOTAL=$(wc -l < /tmp/test_results.txt)
             PASSED=$(grep -c "^PASS" /tmp/test_results.txt || echo 0)
