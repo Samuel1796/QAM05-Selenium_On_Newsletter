@@ -2,7 +2,9 @@ package com.newsletter.pages;
 
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
+import org.openqa.selenium.By;
 import org.openqa.selenium.support.FindBy;
+import org.openqa.selenium.support.ui.ExpectedConditions;
 
 /**
  * Page Object for Success Message Page
@@ -70,7 +72,21 @@ public class SuccessPage extends BasePage {
      * Click dismiss button
      */
     public void clickDismissButton() {
-        click(dismissButton);
+        try {
+            click(dismissButton);
+        } catch (Exception primaryError) {
+            WebElement fallbackDismissButton = driver.findElement(
+                    By.xpath("//button[contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'dismiss')]")
+            );
+            click(fallbackDismissButton);
+        }
+        try {
+            wait.until(ExpectedConditions.or(
+                    ExpectedConditions.visibilityOfElementLocated(By.id("email")),
+                    ExpectedConditions.visibilityOfElementLocated(By.cssSelector("form"))
+            ));
+        } catch (Exception ignored) {
+        }
     }
 
     /**

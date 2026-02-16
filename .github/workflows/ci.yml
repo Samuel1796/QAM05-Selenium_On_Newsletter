@@ -97,6 +97,12 @@ jobs:
         continue-on-error: true
         run: |
           > /tmp/test_results.txt
+          TOTAL=0
+          PASSED=0
+          FAILED=0
+          FAILURES=0
+          ERRORS=0
+          SKIPPED=0
 
           if [ -d target/surefire-reports ]; then
             sudo apt-get update -qq && sudo apt-get install -y -qq xmlstarlet > /dev/null 2>&1
@@ -108,9 +114,7 @@ jobs:
                   -m "//testcase" \
                   -v "@name" -o "|" \
                   -v "@time" -o "|" \
-                  -i "failure" -o "FAIL" -b \
-                  -i "error" -o "ERROR" -b \
-                  -i "not(failure) and not(error)" -o "PASS" -b \
+                  -v "name((failure|error)[1])" \
                   -n \
                   "$xml_file" 2>/dev/null >> /tmp/all_tests.txt
               fi
@@ -119,20 +123,30 @@ jobs:
             if [ -f /tmp/all_tests.txt ]; then
               grep -v "setUp\|tearDown\|setUpClass\|tearDownClass" /tmp/all_tests.txt | while IFS='|' read -r name time status; do
                 rounded_time=$(printf "%.1f" "$time" 2>/dev/null || echo "$time")
-                if [ "$status" = "PASS" ]; then
-                  echo "PASS $name (${rounded_time}s)"
-                elif [ "$status" = "FAIL" ]; then
+                if [ "$status" = "failure" ]; then
                   echo "FAIL $name (${rounded_time}s)"
-                elif [ "$status" = "ERROR" ]; then
+                elif [ "$status" = "error" ]; then
                   echo "ERROR $name (${rounded_time}s)"
+                else
+                  echo "PASS $name (${rounded_time}s)"
                 fi
               done > /tmp/test_results.txt
             fi
+
+            TOTAL=$(xmlstarlet sel -t -v "sum(//testsuite/@tests)" target/surefire-reports/TEST-*.xml 2>/dev/null | awk '{printf "%.0f", $1}')
+            FAILURES=$(xmlstarlet sel -t -v "sum(//testsuite/@failures)" target/surefire-reports/TEST-*.xml 2>/dev/null | awk '{printf "%.0f", $1}')
+            ERRORS=$(xmlstarlet sel -t -v "sum(//testsuite/@errors)" target/surefire-reports/TEST-*.xml 2>/dev/null | awk '{printf "%.0f", $1}')
+            SKIPPED=$(xmlstarlet sel -t -v "sum(//testsuite/@skipped)" target/surefire-reports/TEST-*.xml 2>/dev/null | awk '{printf "%.0f", $1}')
+            FAILED=$((FAILURES + ERRORS))
+            PASSED=$((TOTAL - FAILED - SKIPPED))
+            if [ "$PASSED" -lt 0 ]; then PASSED=0; fi
           fi
 
-          TOTAL=$(wc -l < /tmp/test_results.txt)
-          PASSED=$(grep -c "^PASS" /tmp/test_results.txt || echo 0)
-          FAILED=$(grep -c "^FAIL\|^ERROR" /tmp/test_results.txt || echo 0)
+          if [ "$TOTAL" -eq 0 ]; then
+            TOTAL=$(wc -l < /tmp/test_results.txt)
+            PASSED=$(grep -c "^PASS" /tmp/test_results.txt || echo 0)
+            FAILED=$(grep -c "^FAIL\|^ERROR" /tmp/test_results.txt || echo 0)
+          fi
 
           RESULTS=$(head -20 /tmp/test_results.txt)
           if [ "$TOTAL" -gt 20 ]; then
@@ -148,6 +162,13 @@ jobs:
           echo "TOTAL_TESTS=$TOTAL" >> $GITHUB_ENV
           echo "PASSED_TESTS=$PASSED" >> $GITHUB_ENV
           echo "FAILED_TESTS=$FAILED" >> $GITHUB_ENV
+          if [ "$FAILED" -gt 0 ]; then
+            echo "FAIL_REASON=test_failures" >> $GITHUB_ENV
+          elif [ "${TEST_FAILED:-false}" = "true" ]; then
+            echo "FAIL_REASON=build_error" >> $GITHUB_ENV
+          else
+            echo "FAIL_REASON=none" >> $GITHUB_ENV
+          fi
 
       - name: Format Notification Payload
         if: always()
@@ -161,6 +182,11 @@ jobs:
           echo "EMAIL_RESULTS<<EOFMARKER" >> $GITHUB_ENV
           echo "$EMAIL_RESULTS" >> $GITHUB_ENV
           echo "EOFMARKER" >> $GITHUB_ENV
+          if [ "${FAIL_REASON}" = "test_failures" ]; then
+            echo "FAIL_SUMMARY=${PASSED_TESTS} passed, ${FAILED_TESTS} failed (${TOTAL_TESTS} total) :warning:" >> $GITHUB_ENV
+          else
+            echo "FAIL_SUMMARY=${PASSED_TESTS} passed, ${FAILED_TESTS} failed (${TOTAL_TESTS} total). Build failed with exit code ${TEST_EXIT_CODE}." >> $GITHUB_ENV
+          fi
 
       - name: Slack Notification - Success
         if: always() && env.TEST_FAILED == 'false' && env.SLACK_WEBHOOK_URL != ''
@@ -238,7 +264,7 @@ jobs:
                 "type": "section",
                 "text": {
                   "type": "mrkdwn",
-                  "text": "*Test Summary:* '"$PASSED_TESTS"' passed, '"$FAILED_TESTS"' failed ('"$TOTAL_TESTS"' total) :warning:"
+                  "text": "*Test Summary:* '"$FAIL_SUMMARY"'"
                 }
               },
               {
@@ -298,7 +324,7 @@ jobs:
             <strong>Branch:</strong> ${{ github.ref_name }}<br>
             <strong>Java:</strong> ${{ matrix.java-version }}<br>
             <strong>Commit:</strong> <code>${{ github.sha }}</code></p>
-            <p><strong>Test Summary:</strong> ${{ env.PASSED_TESTS }} passed, ${{ env.FAILED_TESTS }} failed (${{ env.TOTAL_TESTS }} total) :warning:</p>
+            <p><strong>Test Summary:</strong> ${{ env.FAIL_SUMMARY }}</p>
             <p><strong>Test Results:</strong><br>${{ env.EMAIL_RESULTS }}</p>
             <p><a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View Full Logs &amp; Screenshots</a></p>
 
