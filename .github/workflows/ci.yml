@@ -3,8 +3,12 @@ name: Selenium CI Pipeline
 on:
   push:
     branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  # Optional: custom trigger for external systems (kept for flexibility)
   repository_dispatch:
     types: [ newsletter-update ]
+  # Manual trigger for ad‑hoc runs
   workflow_dispatch:
 
 jobs:
@@ -18,6 +22,9 @@ jobs:
       SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
       EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
       EMAIL_TO: ${{ secrets.EMAIL_TO }}
+      # Run Chrome in headless mode on CI runners.
+      CI: "true"
+      HEADLESS: "true"
 
     strategy:
       fail-fast: false
@@ -90,71 +97,84 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
-          > /tmp/all_tests.txt
-          > /tmp/all_tests_filtered.txt
-          > /tmp/unique_tests.txt
-          > /tmp/test_results.txt
+          set +e
+          sudo apt-get update -qq > /dev/null 2>&1
+          # xmlstarlet is used to parse TestNG/JUnit XML reports; jq is used to safely construct Slack JSON.
+          sudo apt-get install -y -qq xmlstarlet jq > /dev/null 2>&1
+          set -e
+
+          REPORT_DIR="target/surefire-reports"
+          TESTNG_REPORT="${REPORT_DIR}/testng-results.xml"
+
           TOTAL=0
           PASSED=0
           FAILED=0
+          SKIPPED=0
 
-          if [ -d target/surefire-reports ]; then
-            sudo apt-get update -qq && sudo apt-get install -y -qq xmlstarlet > /dev/null 2>&1
+          > /tmp/test_results.txt
+          > /tmp/failed_tests.txt
 
-            for xml_file in target/surefire-reports/TEST-*.xml; do
-              if [ -f "$xml_file" ]; then
-                xmlstarlet sel -t \
-                  -m "//testcase" \
-                  -v "@name" -o "|" \
-                  -v "@time" -o "|" \
-                  -v "name((failure|error)[1])" \
-                  -n \
-                  "$xml_file" 2>/dev/null >> /tmp/all_tests.txt
+          if [ -f "$TESTNG_REPORT" ]; then
+            # TestNG is the primary test framework used in this repository.
+            TOTAL=$(xmlstarlet sel -t -v "/testng-results/@total" "$TESTNG_REPORT" 2>/dev/null || echo 0)
+            PASSED=$(xmlstarlet sel -t -v "/testng-results/@passed" "$TESTNG_REPORT" 2>/dev/null || echo 0)
+            FAILED=$(xmlstarlet sel -t -v "/testng-results/@failed" "$TESTNG_REPORT" 2>/dev/null || echo 0)
+            SKIPPED=$(xmlstarlet sel -t -v "/testng-results/@skipped" "$TESTNG_REPORT" 2>/dev/null || echo 0)
+
+            # List failing test methods (ignore configuration methods).
+            xmlstarlet sel -t \
+              -m "//test-method[@status='FAIL' and (not(@is-config) or @is-config='false')]" \
+              -v "concat(@class, '#', @name)" -n \
+              "$TESTNG_REPORT" 2>/dev/null | sort -u > /tmp/failed_tests.txt || true
+
+            if [ "$FAILED" -gt 0 ]; then
+              head -20 /tmp/failed_tests.txt | while read -r t; do
+                [ -z "$t" ] && continue
+                echo "FAIL $t" >> /tmp/test_results.txt
+              done
+              if [ "$FAILED" -gt 20 ]; then
+                echo "... and $((FAILED - 20)) more failing tests" >> /tmp/test_results.txt
               fi
-            done
+            else
+              # If all tests passed, show a short sample of passing tests for visibility.
+              xmlstarlet sel -t \
+                -m "//test-method[@status='PASS' and (not(@is-config) or @is-config='false')]" \
+                -v "concat(@class, '#', @name)" -n \
+                "$TESTNG_REPORT" 2>/dev/null | sort -u | head -20 | while read -r t; do
+                  [ -z "$t" ] && continue
+                  echo "PASS $t" >> /tmp/test_results.txt
+                done || true
+              if [ -s /tmp/test_results.txt ]; then
+                echo "... (showing up to 20 passing tests)" >> /tmp/test_results.txt
+              else
+                echo "PASS All tests passed." >> /tmp/test_results.txt
+              fi
+            fi
+          else
+            # Fallback for JUnit XML (in case the project switches frameworks or report format changes).
+            if [ -d "$REPORT_DIR" ]; then
+              xmlstarlet sel -t \
+                -m "//testcase" \
+                -v "@classname" -o "#" -v "@name" -o "|" \
+                -v "name((failure|error)[1])" \
+                -n \
+                "$REPORT_DIR"/TEST-*.xml 2>/dev/null > /tmp/junit_cases.txt || true
+            fi
 
-            if [ -s /tmp/all_tests.txt ]; then
-              grep -v "setUp\|tearDown\|setUpClass\|tearDownClass" /tmp/all_tests.txt > /tmp/all_tests_filtered.txt || true
+            TOTAL=$(awk -F'|' 'NF{c++} END{print c+0}' /tmp/junit_cases.txt 2>/dev/null || echo 0)
+            FAILED=$(awk -F'|' 'tolower($2)=="failure" || tolower($2)=="error"{c++} END{print c+0}' /tmp/junit_cases.txt 2>/dev/null || echo 0)
+            PASSED=$((TOTAL - FAILED))
+            SKIPPED=0
 
-              awk -F'|' '
-                function rank(s) { return (s=="ERROR" ? 3 : (s=="FAIL" ? 2 : 1)); }
-                {
-                  name=$1;
-                  time=$2 + 0;
-                  raw=tolower($3);
-                  status=(raw=="failure" ? "FAIL" : (raw=="error" ? "ERROR" : "PASS"));
-                  if (!(name in best) || rank(status) > rank(best[name])) {
-                    best[name]=status;
-                    t[name]=time;
-                  }
-                }
-                END {
-                  for (n in best) {
-                    printf "%s|%s|%.1f\n", n, best[n], t[n];
-                  }
-                }
-              ' /tmp/all_tests_filtered.txt | sort > /tmp/unique_tests.txt
-
-              while IFS='|' read -r name status rounded_time; do
-                [ -z "$name" ] && continue
-                echo "$status $name (${rounded_time}s)"
-              done < /tmp/unique_tests.txt > /tmp/test_results.txt
+            if [ "$FAILED" -gt 0 ]; then
+              awk -F'|' 'tolower($2)=="failure" || tolower($2)=="error"{print "FAIL "$1}' /tmp/junit_cases.txt | sort -u | head -20 > /tmp/test_results.txt || true
+            else
+              awk -F'|' 'NF{print "PASS "$1}' /tmp/junit_cases.txt | sort -u | head -20 > /tmp/test_results.txt || true
+              echo "... (showing up to 20 passing tests)" >> /tmp/test_results.txt
             fi
           fi
 
-          TOTAL=$(wc -l < /tmp/unique_tests.txt)
-          PASSED=$(grep -c "|PASS|" /tmp/unique_tests.txt || echo 0)
-          FAILED=$(grep -Ec "\\|(FAIL|ERROR)\\|" /tmp/unique_tests.txt || echo 0)
-          if [ "$TOTAL" -eq 0 ]; then
-            TOTAL=$(wc -l < /tmp/test_results.txt)
-            PASSED=$(grep -c "^PASS" /tmp/test_results.txt || echo 0)
-            FAILED=$(grep -c "^FAIL\|^ERROR" /tmp/test_results.txt || echo 0)
-          fi
-
-          RESULTS=$(head -20 /tmp/test_results.txt)
-          if [ "$TOTAL" -gt 20 ]; then
-            RESULTS="$RESULTS"$'\n'"... and $((TOTAL - 20)) more tests"
-          fi
+          RESULTS=$(cat /tmp/test_results.txt)
           if [ -z "$RESULTS" ]; then
             RESULTS="No parsed test case results found."
           fi
@@ -165,10 +185,16 @@ jobs:
           echo "TOTAL_TESTS=$TOTAL" >> $GITHUB_ENV
           echo "PASSED_TESTS=$PASSED" >> $GITHUB_ENV
           echo "FAILED_TESTS=$FAILED" >> $GITHUB_ENV
+          echo "SKIPPED_TESTS=$SKIPPED" >> $GITHUB_ENV
+
+          # Determine pipeline status:
+          # - If any tests failed -> fail
+          # - Else if Maven returned a non-zero code -> fail (build/runtime error)
+          # - Else -> success
           if [ "$FAILED" -gt 0 ]; then
             echo "TEST_FAILED=true" >> $GITHUB_ENV
             echo "FAIL_REASON=test_failures" >> $GITHUB_ENV
-          elif [ "${TEST_EXIT_CODE:-0}" -ne 0 ] && [ "$TOTAL" -eq 0 ]; then
+          elif [ "${TEST_EXIT_CODE:-0}" -ne 0 ]; then
             echo "TEST_FAILED=true" >> $GITHUB_ENV
             echo "FAIL_REASON=build_error" >> $GITHUB_ENV
           else
@@ -179,7 +205,7 @@ jobs:
       - name: Format Notification Payload
         if: always()
         run: |
-          FORMATTED=$(echo "$TEST_RESULTS" | sed 's/^PASS /:white_check_mark: /g' | sed 's/^FAIL /:x: /g' | sed 's/^ERROR /:x: /g')
+          FORMATTED=$(echo "$TEST_RESULTS" | sed 's/^PASS /:white_check_mark: /g' | sed 's/^FAIL /:x: /g')
           echo "FORMATTED_RESULTS<<EOFMARKER" >> $GITHUB_ENV
           echo "$FORMATTED" >> $GITHUB_ENV
           echo "EOFMARKER" >> $GITHUB_ENV
@@ -188,112 +214,71 @@ jobs:
           echo "EMAIL_RESULTS<<EOFMARKER" >> $GITHUB_ENV
           echo "$EMAIL_RESULTS" >> $GITHUB_ENV
           echo "EOFMARKER" >> $GITHUB_ENV
-          if [ "${FAIL_REASON}" = "test_failures" ]; then
-            echo "FAIL_SUMMARY=${PASSED_TESTS} passed, ${FAILED_TESTS} failed (${TOTAL_TESTS} total) :warning:" >> $GITHUB_ENV
+
+          SUMMARY="Passed: ${PASSED_TESTS} | Failed: ${FAILED_TESTS} | Skipped: ${SKIPPED_TESTS} | Total: ${TOTAL_TESTS}"
+          echo "SUMMARY_LINE=$SUMMARY" >> $GITHUB_ENV
+
+          if [ "${TEST_FAILED}" = "true" ] && [ "${FAIL_REASON}" = "build_error" ]; then
+            echo "STATUS_LINE=:x: Build error (mvn exit code ${TEST_EXIT_CODE}). ${SUMMARY}" >> $GITHUB_ENV
+          elif [ "${TEST_FAILED}" = "true" ]; then
+            echo "STATUS_LINE=:x: Test failures. ${SUMMARY}" >> $GITHUB_ENV
           else
-            echo "FAIL_SUMMARY=${PASSED_TESTS} passed, ${FAILED_TESTS} failed (${TOTAL_TESTS} total). Build failed with exit code ${TEST_EXIT_CODE}." >> $GITHUB_ENV
-          fi
-          if [ "${TEST_EXIT_CODE:-0}" -ne 0 ] && [ "${FAILED_TESTS:-0}" -eq 0 ] && [ "${TOTAL_TESTS:-0}" -gt 0 ]; then
-            echo "PASS_SUMMARY=${PASSED_TESTS}/${TOTAL_TESTS} passed :white_check_mark: (non-test Maven exit code ${TEST_EXIT_CODE})" >> $GITHUB_ENV
-          else
-            echo "PASS_SUMMARY=${PASSED_TESTS}/${TOTAL_TESTS} passed :white_check_mark:" >> $GITHUB_ENV
+            echo "STATUS_LINE=:white_check_mark: Tests passed. ${SUMMARY}" >> $GITHUB_ENV
           fi
 
       - name: Slack Notification - Success
         if: always() && env.TEST_FAILED == 'false' && env.SLACK_WEBHOOK_URL != ''
         continue-on-error: true
         run: |
-          ESCAPED=$(echo "$FORMATTED_RESULTS" | jq -Rs .)
-          curl -X POST "$SLACK_WEBHOOK_URL" \
-          -H 'Content-Type: application/json' \
-          -d '{
-            "text": ":white_check_mark: Selenium Tests PASSED",
-            "blocks": [
-              {
-                "type": "header",
-                "text": {
-                  "type": "plain_text",
-                  "text": "Selenium Tests PASSED"
-                }
-              },
-              {
-                "type": "section",
-                "text": {
-                  "type": "mrkdwn",
-                  "text": "*Repo:* ${{ github.repository }}\n*Branch:* ${{ github.ref_name }}\n*Java:* ${{ matrix.java-version }}\n*Commit:* `${{ github.sha }}`"
-                }
-              },
-              {
-                "type": "section",
-                "text": {
-                  "type": "mrkdwn",
-                  "text": "*Test Summary:* '"$PASS_SUMMARY"'"
-                }
-              },
-              {
-                "type": "section",
-                "text": {
-                  "type": "mrkdwn",
-                  "text": "*Test Results:*\n```'"$(echo "$ESCAPED" | jq -r .)"'```"
-                }
-              },
-              {
-                "type": "section",
-                "text": {
-                  "type": "mrkdwn",
-                  "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Run>"
-                }
-              }
-            ]
-          }'
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          SHORT_SHA="$(echo "${{ github.sha }}" | cut -c1-7)"
+          PAYLOAD=$(jq -n \
+            --arg text ":white_check_mark: Selenium Tests PASSED" \
+            --arg repo "${{ github.repository }}" \
+            --arg branch "${{ github.ref_name }}" \
+            --arg java "${{ matrix.java-version }}" \
+            --arg sha "$SHORT_SHA" \
+            --arg status "$STATUS_LINE" \
+            --arg results "$FORMATTED_RESULTS" \
+            --arg url "$RUN_URL" \
+            '{
+              text: $text,
+              blocks: [
+                { type: "header", text: { type: "plain_text", text: "Selenium Tests PASSED" } },
+                { type: "section", text: { type: "mrkdwn", text: ("*Repo:* " + $repo + "\n*Branch:* " + $branch + "\n*Java:* " + $java + "\n*Commit:* `" + $sha + "`") } },
+                { type: "section", text: { type: "mrkdwn", text: ("*Status:* " + $status) } },
+                { type: "section", text: { type: "mrkdwn", text: ("*Sample results (first lines):*\n```" + $results + "```") } },
+                { type: "section", text: { type: "mrkdwn", text: ("<" + $url + "|View workflow run & artifacts>") } }
+              ]
+            }')
+          curl -sS -X POST "$SLACK_WEBHOOK_URL" -H 'Content-Type: application/json' -d "$PAYLOAD" > /dev/null
 
       - name: Slack Notification - Failure
         if: always() && env.TEST_FAILED == 'true' && env.SLACK_WEBHOOK_URL != ''
         continue-on-error: true
         run: |
-          ESCAPED=$(echo "$FORMATTED_RESULTS" | jq -Rs .)
-          curl -X POST "$SLACK_WEBHOOK_URL" \
-          -H 'Content-Type: application/json' \
-          -d '{
-            "text": ":x: Selenium Tests FAILED",
-            "blocks": [
-              {
-                "type": "header",
-                "text": {
-                  "type": "plain_text",
-                  "text": "Selenium Tests FAILED"
-                }
-              },
-              {
-                "type": "section",
-                "text": {
-                  "type": "mrkdwn",
-                  "text": "*Repo:* ${{ github.repository }}\n*Branch:* ${{ github.ref_name }}\n*Java:* ${{ matrix.java-version }}\n*Commit:* `${{ github.sha }}`"
-                }
-              },
-              {
-                "type": "section",
-                "text": {
-                  "type": "mrkdwn",
-                  "text": "*Test Summary:* '"$FAIL_SUMMARY"'"
-                }
-              },
-              {
-                "type": "section",
-                "text": {
-                  "type": "mrkdwn",
-                  "text": "*Test Results:*\n```'"$(echo "$ESCAPED" | jq -r .)"'```"
-                }
-              },
-              {
-                "type": "section",
-                "text": {
-                  "type": "mrkdwn",
-                  "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Full Logs & Screenshots>"
-                }
-              }
-            ]
-          }'
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          SHORT_SHA="$(echo "${{ github.sha }}" | cut -c1-7)"
+          PAYLOAD=$(jq -n \
+            --arg text ":x: Selenium Tests FAILED" \
+            --arg repo "${{ github.repository }}" \
+            --arg branch "${{ github.ref_name }}" \
+            --arg java "${{ matrix.java-version }}" \
+            --arg sha "$SHORT_SHA" \
+            --arg status "$STATUS_LINE" \
+            --arg results "$FORMATTED_RESULTS" \
+            --arg url "$RUN_URL" \
+            '{
+              text: $text,
+              blocks: [
+                { type: "header", text: { type: "plain_text", text: "Selenium Tests FAILED" } },
+                { type: "section", text: { type: "mrkdwn", text: ("*Repo:* " + $repo + "\n*Branch:* " + $branch + "\n*Java:* " + $java + "\n*Commit:* `" + $sha + "`") } },
+                { type: "section", text: { type: "mrkdwn", text: ("*Status:* " + $status) } },
+                { type: "section", text: { type: "mrkdwn", text: ("*Failing tests (first lines):*\n```" + $results + "```") } },
+                { type: "section", text: { type: "mrkdwn", text: ("<" + $url + "|View workflow run, logs & artifacts>") } }
+              ]
+            }')
+          curl -sS -X POST "$SLACK_WEBHOOK_URL" -H 'Content-Type: application/json' -d "$PAYLOAD" > /dev/null
 
       - name: Email Notification - Success
         if: always() && env.TEST_FAILED == 'false' && env.SMTP_SERVER != '' && env.SMTP_USERNAME != '' && env.SMTP_PASSWORD != '' && env.EMAIL_FROM != '' && env.EMAIL_TO != ''
@@ -313,8 +298,8 @@ jobs:
             <strong>Branch:</strong> ${{ github.ref_name }}<br>
             <strong>Java:</strong> ${{ matrix.java-version }}<br>
             <strong>Commit:</strong> <code>${{ github.sha }}</code></p>
-            <p><strong>Test Summary:</strong> ${{ env.PASS_SUMMARY }}</p>
-            <p><strong>Test Results:</strong><br>${{ env.EMAIL_RESULTS }}</p>
+            <p><strong>Status:</strong> ${{ env.STATUS_LINE }}</p>
+            <p><strong>Results sample:</strong><br>${{ env.EMAIL_RESULTS }}</p>
             <p><a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View Workflow Run</a></p>
 
       - name: Email Notification - Failure
@@ -335,8 +320,8 @@ jobs:
             <strong>Branch:</strong> ${{ github.ref_name }}<br>
             <strong>Java:</strong> ${{ matrix.java-version }}<br>
             <strong>Commit:</strong> <code>${{ github.sha }}</code></p>
-            <p><strong>Test Summary:</strong> ${{ env.FAIL_SUMMARY }}</p>
-            <p><strong>Test Results:</strong><br>${{ env.EMAIL_RESULTS }}</p>
+            <p><strong>Status:</strong> ${{ env.STATUS_LINE }}</p>
+            <p><strong>Failing tests:</strong><br>${{ env.EMAIL_RESULTS }}</p>
             <p><a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View Full Logs &amp; Screenshots</a></p>
 
       - name: Fail Job If Tests Failed

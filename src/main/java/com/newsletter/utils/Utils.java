@@ -2,6 +2,13 @@ package com.newsletter.utils;
 
 import java.util.*;
 
+/**
+ * Test utility helpers.
+ *
+ * <p>These helpers generate random test data (valid/invalid emails) to reduce duplication in tests.
+ * Randomized data improves coverage but can reduce reproducibility; therefore, the datasets are kept
+ * small and constrained to realistic patterns.</p>
+ */
 public class Utils {
 
     private static final Random RANDOM = new Random();
@@ -17,7 +24,9 @@ public class Utils {
     };
 
     /**
-     * Generate a random valid email address
+     * Generate a random valid email address.
+     *
+     * @return a syntactically valid email using a known domain list
      */
     public static String generateRandomEmail() {
         String username = USERNAMES[RANDOM.nextInt(USERNAMES.length)] + RANDOM.nextInt(1000);
@@ -26,7 +35,10 @@ public class Utils {
     }
 
     /**
-     * Generate a pool of random valid emails
+     * Generate a pool of random (unique) valid emails.
+     *
+     * @param size number of unique emails to generate
+     * @return a list of unique emails
      */
     public static List<String> generateEmailPool(int size) {
         Set<String> emails = new HashSet<>();
@@ -37,7 +49,11 @@ public class Utils {
     }
 
     /**
-     * Get random subset of emails for testing
+     * Build a TestNG {@code Object[][]} data-provider payload containing a random subset of emails.
+     *
+     * @param poolSize how many emails to generate initially
+     * @param selectionSize how many emails to return (max = poolSize)
+     * @return {@code Object[][]} suitable for {@code @DataProvider}
      */
     public static Object[][] getRandomEmails(int poolSize, int selectionSize) {
         List<String> pool = generateEmailPool(poolSize);
@@ -53,7 +69,12 @@ public class Utils {
     }
 
     /**
-     * Generate random invalid email
+     * Generate a random invalid email.
+     *
+     * <p>Invalid formats are intentionally diverse (missing parts, illegal characters, etc.) to
+     * exercise client-side validation and backend constraints.</p>
+     *
+     * @return a syntactically invalid email string
      */
     public static String generateInvalidEmail() {
         String username = USERNAMES[RANDOM.nextInt(USERNAMES.length)] + RANDOM.nextInt(1000);
@@ -75,7 +96,10 @@ public class Utils {
     }
 
     /**
-     * Get random invalid emails for negative testing
+     * Build a TestNG {@code Object[][]} data-provider payload containing invalid emails.
+     *
+     * @param count number of invalid emails
+     * @return {@code Object[][]} suitable for {@code @DataProvider}
      */
     public static Object[][] getRandomInvalidEmails(int count) {
         Set<String> invalidEmails = new HashSet<>();

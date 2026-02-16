@@ -45,6 +45,16 @@ public class SignUpPage extends BasePage {
     }
 
     /**
+     * Check that the browser is currently displaying the sign-up form.
+     * This uses visible form/email controls instead of relying on raw URL strings.
+     *
+     * @return true if the sign-up form context is visible
+     */
+    public boolean isOnSignUpPage() {
+        return isEmailInputDisplayed() || isFormDisplayed();
+    }
+
+    /**
      * Enter email address
      */
     public SignUpPage enterEmail(String email) {
@@ -72,10 +82,54 @@ public class SignUpPage extends BasePage {
     }
 
     /**
+     * Gets the validation error message in a normalized form.
+     *
+     * <p>Normalization makes assertions more stable across minor UI copy changes (extra whitespace,
+     * line breaks, different capitalization).</p>
+     *
+     * @return trimmed, single-spaced error message; empty string if not present
+     */
+    public String getNormalizedErrorMessage() {
+        return getErrorMessage()
+                .replace("\n", " ")
+                .replace("\r", " ")
+                .trim()
+                .replaceAll("\\s+", " ");
+    }
+
+    /**
      * Check if error message is displayed
      */
     public boolean isErrorMessageDisplayed() {
         return isDisplayed(errorMessage);
+    }
+
+    /**
+     * Wait for the validation error message to become visible.
+     *
+     * @return true if the error message becomes visible within the default timeout, false otherwise
+     */
+    public boolean waitForErrorMessageToBeVisible() {
+        try {
+            waitForElementToBeVisible(errorMessage);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Wait for the validation error message to disappear.
+     *
+     * @return true if the error message disappears within the default timeout, false otherwise
+     */
+    public boolean waitForErrorMessageToDisappear() {
+        try {
+            waitForElementToDisappear(errorMessage);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /**

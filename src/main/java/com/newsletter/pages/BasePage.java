@@ -29,6 +29,15 @@ public class BasePage {
     }
 
     /**
+     * Wait for element to become invisible or not present in the DOM.
+     *
+     * @param element the element to wait to disappear
+     */
+    protected void waitForElementToDisappear(WebElement element) {
+        wait.until(ExpectedConditions.invisibilityOf(element));
+    }
+
+    /**
      * Wait for element to be clickable
      */
     protected void waitForElementToBeClickable(WebElement element) {
