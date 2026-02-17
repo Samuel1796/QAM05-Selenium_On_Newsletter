@@ -87,7 +87,7 @@ public class SignUpTest extends BaseTest {
      * </p>
      */
     @Test
-    @DisplayName("Verify Error Message for Invalid Email Format")
+    @DisplayName("[TC001] Verify Error Message for Invalid Email Format")
     @Tag("signup")
     @Tag("negative")
     public void testInvalidEmailFormat() {
@@ -110,7 +110,7 @@ public class SignUpTest extends BaseTest {
      * </p>
      */
     @Test
-    @DisplayName("Verify Error Message for Empty Email Field")
+    @DisplayName("[TC002] Verify Error Message for Empty Email Field")
     @Tag("signup")
     @Tag("negative")
     public void testEmptyEmailField() {
@@ -149,7 +149,7 @@ public class SignUpTest extends BaseTest {
      */
     @ParameterizedTest(name = "Invalid email should be rejected: {0}")
     @MethodSource("invalidEmailProvider")
-    @DisplayName("Verify Form Validation with Multiple Invalid Email Formats")
+    @DisplayName("[TC003] Verify Form Validation with Multiple Invalid Email Formats")
     @Tag("signup")
     @Tag("negative")
     public void testMultipleInvalidEmailFormats(String invalidEmail) {
@@ -188,7 +188,7 @@ public class SignUpTest extends BaseTest {
      */
     @ParameterizedTest(name = "Valid email should be accepted: {0}")
     @MethodSource("validEmailProvider")
-    @DisplayName("Verify Successful Subscription with Various Valid Email Formats")
+    @DisplayName("[TC004] Verify Successful Subscription with Various Valid Email Formats")
     @Tag("signup")
     @Tag("positive")
     public void testValidEmailFormats(String validEmail) {
@@ -206,7 +206,7 @@ public class SignUpTest extends BaseTest {
      * </p>
      */
     @Test
-    @DisplayName("Verify Subscribe Button is Clickable")
+    @DisplayName("[TC005] Verify Subscribe Button is Clickable")
     @Tag("signup")
     @Tag("smoke")
     public void testSubscribeButtonIsClickable() {
@@ -229,7 +229,7 @@ public class SignUpTest extends BaseTest {
      * </p>
      */
     @Test
-    @DisplayName("Verify Email Input Clears After Page Refresh")
+    @DisplayName("[TC006] Verify Email Input Clears After Page Refresh")
     @Tag("signup")
     @Tag("regression")
     public void testFormPersistenceAfterRefresh() {
@@ -271,7 +271,7 @@ public class SignUpTest extends BaseTest {
      * </p>
      */
     @Test
-    @DisplayName("Verify Maximum Length of Email Input")
+    @DisplayName("[TC007] Verify Maximum Length of Email Input")
     @Tag("signup")
     @Tag("regression")
     public void testEmailInputMaxLength() {
@@ -298,7 +298,7 @@ public class SignUpTest extends BaseTest {
      * </p>
      */
     @Test
-    @DisplayName("Verify Special Characters in Email")
+    @DisplayName("[TC008] Verify Special Characters in Email")
     @Tag("signup")
     @Tag("positive")
     public void testSpecialCharactersInEmail() {
@@ -320,7 +320,7 @@ public class SignUpTest extends BaseTest {
      * </p>
      */
     @Test
-    @DisplayName("Verify Form Behavior with Leading/Trailing Spaces")
+    @DisplayName("[TC009] Verify Form Behavior with Leading/Trailing Spaces")
     @Tag("signup")
     @Tag("positive")
     public void testEmailWithSpaces() {
@@ -339,7 +339,7 @@ public class SignUpTest extends BaseTest {
      * </p>
      */
     @Test
-    @DisplayName("Verify Success Page Displays Correct Email After Subscription")
+    @DisplayName("[TC010] Verify Success Page Displays Correct Email After Subscription")
     @Tag("signup")
     @Tag("regression")
     public void testSuccessPageDisplaysEmail() {
@@ -363,7 +363,7 @@ public class SignUpTest extends BaseTest {
      * </p>
      */
     @Test
-    @DisplayName("Verify Error Message Disappears When Valid Email Entered")
+    @DisplayName("[TC011] Verify Error Message Disappears When Valid Email Entered")
     @Tag("signup")
     @Tag("negative")
     public void testErrorMessageClearsOnValidEmail() {
@@ -386,7 +386,7 @@ public class SignUpTest extends BaseTest {
      * </p>
      */
     @Test
-    @DisplayName("Verify Dismiss Button Returns to Form")
+    @DisplayName("[TC012] Verify Dismiss Button Returns to Form")
     @Tag("signup")
     @Tag("regression")
     public void testDismissSuccessMessage() {

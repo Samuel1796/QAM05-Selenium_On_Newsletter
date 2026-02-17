@@ -52,6 +52,9 @@
                 <configuration>
                     <!-- Enable JUnit 5 (JUnit Platform) -->
                     <useModulePath>false</useModulePath>
+                    <statelessTestsetReporter implementation="org.apache.maven.plugin.surefire.extensions.junit5.JUnit5Xml30StatelessReporter">
+                        <usePhrasedTestCaseMethodName>true</usePhrasedTestCaseMethodName>
+                    </statelessTestsetReporter>
                 </configuration>
             </plugin>
             <!-- Maven Compiler Plugin -->

@@ -96,43 +96,7 @@ jobs:
           > /tmp/test_results.txt
           > /tmp/failed_tests.txt
 
-          if [ -f "$TESTNG_REPORT" ]; then
-            # TestNG is the primary test framework used in this repository.
-            TOTAL=$(xmlstarlet sel -t -v "/testng-results/@total" "$TESTNG_REPORT" 2>/dev/null || echo 0)
-            PASSED=$(xmlstarlet sel -t -v "/testng-results/@passed" "$TESTNG_REPORT" 2>/dev/null || echo 0)
-            FAILED=$(xmlstarlet sel -t -v "/testng-results/@failed" "$TESTNG_REPORT" 2>/dev/null || echo 0)
-            SKIPPED=$(xmlstarlet sel -t -v "/testng-results/@skipped" "$TESTNG_REPORT" 2>/dev/null || echo 0)
-
-            # List failing test methods (ignore configuration methods).
-            xmlstarlet sel -t \
-              -m "//test-method[@status='FAIL' and (not(@is-config) or @is-config='false')]" \
-              -v "concat(@class, '#', @name)" -n \
-              "$TESTNG_REPORT" 2>/dev/null | sort -u > /tmp/failed_tests.txt || true
-
-            if [ "$FAILED" -gt 0 ]; then
-              head -20 /tmp/failed_tests.txt | while read -r t; do
-                [ -z "$t" ] && continue
-                echo "FAIL $t" >> /tmp/test_results.txt
-              done
-              if [ "$FAILED" -gt 20 ]; then
-                echo "... and $((FAILED - 20)) more failing tests" >> /tmp/test_results.txt
-              fi
-            else
-              # If all tests passed, show a short sample of passing tests for visibility.
-              xmlstarlet sel -t \
-                -m "//test-method[@status='PASS' and (not(@is-config) or @is-config='false')]" \
-                -v "concat(@class, '#', @name)" -n \
-                "$TESTNG_REPORT" 2>/dev/null | sort -u | head -20 | while read -r t; do
-                  [ -z "$t" ] && continue
-                  echo "PASS $t" >> /tmp/test_results.txt
-                done || true
-              if [ -s /tmp/test_results.txt ]; then
-                echo "... (showing up to 20 passing tests)" >> /tmp/test_results.txt
-              else
-                echo "PASS All tests passed." >> /tmp/test_results.txt
-              fi
-            fi
-          else
+          # JUnit XML (JUnit 5 / Surefire) - extract class#name, status, and failure message for traceability
             # JUnit XML (JUnit 5 / Surefire) - extract class#name, status, and failure message for traceability
             if [ -d "$REPORT_DIR" ]; then
               for f in "$REPORT_DIR"/TEST-*.xml; do
@@ -156,9 +120,9 @@ jobs:
                 msg = ""; for (i=3;i<=NF;i++) msg = msg (i>3?"|":"") $i
                 if (msg != "") msg = " — " msg
                 print "FAIL " $1 msg
-              }' /tmp/junit_cases.txt | sort -u | head -20 > /tmp/test_results.txt || true
+              }' /tmp/junit_cases.txt | sed 's/com\.newsletter\.tests\.//g' | sort -u | head -20 > /tmp/test_results.txt || true
             else
-              awk -F'|' 'NF{print "PASS "$1}' /tmp/junit_cases.txt | sort -u | head -20 > /tmp/test_results.txt || true
+              awk -F'|' 'NF{print "PASS "$1}' /tmp/junit_cases.txt | sed 's/com\.newsletter\.tests\.//g' | sort -u | head -20 > /tmp/test_results.txt || true
               echo "... (showing up to 20 passing tests)" >> /tmp/test_results.txt
             fi
           fi

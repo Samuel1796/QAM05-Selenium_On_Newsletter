@@ -153,7 +153,7 @@ Some tests failed. Reports and screenshots (if any) are attached.
 ### pom.xml Settings
 The project includes Maven plugins for test execution:
 
-- **Maven Surefire Plugin** (v3.1.2): Runs TestNG tests
+- **Maven Surefire Plugin** (v3.1.2): Runs JUnit 5 tests
   - Generates XML and plain text reports
   - Configured for test discovery
 
@@ -184,7 +184,7 @@ The project includes Maven plugins for test execution:
 
 ### Tests Not Running
 **Error:** "No tests found" or build fails
-- **Solution:** Ensure TestNG tests are in `src/test/java`
+- **Solution:** Ensure JUnit 5 tests are in `src/test/java`
 - Check Maven configuration in `pom.xml`
 - Run locally: `mvn test`
 
