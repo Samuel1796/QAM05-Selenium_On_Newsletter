@@ -69,21 +69,6 @@ public class SignUpTest extends BaseTest {
         super.tearDown();
     }
 
-    /**
-     * Verifies that a syntactically valid email results in a successful subscription.
-     *
-     * <p>Expected result: user is redirected to the success screen (or success content becomes visible).</p>
-     */
-//    @Test
-//    @DisplayName("Verify Successful Newsletter Subscription with Valid Email")
-//    @Tag("signup")
-//    @Tag("positive")
-//    public void testSuccessfulSubscriptionWithValidEmail() {
-//        logger.info("Running testSuccessfulSubscriptionWithValidEmail");
-//        signUpPage.navigateToPage();
-//        signUpPage.completeSignUp(Utils.generateRandomEmail());
-//        assertTrue(successPage.isOnSuccessPage(), "Subscription should be successful with valid email");
-//    }
 
     /**
      * Verifies that an invalid email format does not allow subscription.
@@ -100,6 +85,7 @@ public class SignUpTest extends BaseTest {
         signUpPage.completeSignUp("invalid-email");
         assertTrue(signUpPage.isOnSignUpPage(),
                 "Should remain on sign-up form with invalid email");
+
         // Typical copy includes "valid" + "email" (e.g., "Valid email required").
         assertValidationErrorContains("email", "valid");
     }

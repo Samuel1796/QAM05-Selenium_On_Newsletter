@@ -39,18 +39,6 @@ public class SuccessPage extends BasePage {
     }
 
     /**
-     * Get success message text
-     */
-    public String getSuccessMessage() {
-        try {
-            waitForElementToBeVisible(successMessage);
-            return getText(successMessage);
-        } catch (Exception e) {
-            return "";
-        }
-    }
-
-    /**
      * Get success heading text
      */
     public String getSuccessHeading() {

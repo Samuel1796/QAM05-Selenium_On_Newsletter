@@ -49,11 +49,11 @@ public class Utils {
     }
 
     /**
-     * Build a TestNG {@code Object[][]} data-provider payload containing a random subset of emails.
+     * Build a data-provider payload containing a random subset of emails.
      *
      * @param poolSize how many emails to generate initially
      * @param selectionSize how many emails to return (max = poolSize)
-     * @return {@code Object[][]} suitable for {@code @DataProvider}
+
      */
     public static Object[][] getRandomEmails(int poolSize, int selectionSize) {
         List<String> pool = generateEmailPool(poolSize);
@@ -96,10 +96,9 @@ public class Utils {
     }
 
     /**
-     * Build a TestNG {@code Object[][]} data-provider payload containing invalid emails.
+     * Build a  data-provider payload containing invalid emails.
      *
      * @param count number of invalid emails
-     * @return {@code Object[][]} suitable for {@code @DataProvider}
      */
     public static Object[][] getRandomInvalidEmails(int count) {
         Set<String> invalidEmails = new HashSet<>();

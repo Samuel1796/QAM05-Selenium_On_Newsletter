@@ -80,17 +80,4 @@ public class BasePage {
         }
     }
 
-    /**
-     * Get current page URL
-     */
-    public String getCurrentUrl() {
-        return driver.getCurrentUrl();
-    }
-
-    /**
-     * Get page title
-     */
-    public String getPageTitle() {
-        return driver.getTitle();
-    }
 }

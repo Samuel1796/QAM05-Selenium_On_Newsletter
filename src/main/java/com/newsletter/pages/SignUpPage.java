@@ -168,19 +168,6 @@ public class SignUpPage extends BasePage {
         }
     }
 
-    /**
-     * Get subscribe button text
-     */
-    public String getSubscribeButtonText() {
-        return getText(subscribeButton);
-    }
-
-    /**
-     * Get email input placeholder
-     */
-    public String getEmailPlaceholder() {
-        return emailInput.getAttribute("placeholder");
-    }
 
     /**
      * Clear email input
