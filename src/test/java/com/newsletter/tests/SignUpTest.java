@@ -141,6 +141,9 @@ public class SignUpTest extends BaseTest {
         signUpPage.navigateToPage();
         signUpPage.enterEmail(invalidEmail);
         signUpPage.clickSubscribe();
+        
+        // Wait for validation error to appear (this is handled by assertValidationErrorContains)
+        // but first ensure we're still on the sign-up page
         assertTrue(signUpPage.isOnSignUpPage(),
                 "Should remain on sign-up form with invalid email: " + invalidEmail);
         assertValidationErrorContains("email");
@@ -216,6 +219,9 @@ public class SignUpTest extends BaseTest {
 
         // Re-initialize page object after refresh to get fresh element references
         signUpPage = new SignUpPage(driver);
+        
+        // Wait for the email input to be visible and ready after refresh
+        signUpPage.waitForEmailInputReady();
 
         // Check if the input is visible and page returned to sign-up form context
         assertTrue(signUpPage.isEmailInputDisplayed(), "Email input should be displayed after refresh");

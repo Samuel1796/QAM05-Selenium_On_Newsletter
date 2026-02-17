@@ -194,7 +194,20 @@ public class SignUpPage extends BasePage {
      * Get email input value
      */
     public String getEmailInputValue() {
-        return emailInput.getAttribute("value");
+        try {
+            waitForElementToBeVisible(emailInput);
+            String value = emailInput.getAttribute("value");
+            return value != null ? value : "";
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    /**
+     * Wait for email input to be ready after page load/refresh
+     */
+    public void waitForEmailInputReady() {
+        waitForElementToBeVisible(emailInput);
     }
 
     /**
