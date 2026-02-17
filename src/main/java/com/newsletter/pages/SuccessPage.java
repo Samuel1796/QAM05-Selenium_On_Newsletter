@@ -94,6 +94,7 @@ public class SuccessPage extends BasePage {
      */
     public String getEmailConfirmation() {
         try {
+            waitForElementToBeVisible(emailConfirmation);
             return getText(emailConfirmation);
         } catch (Exception e) {
             return "";
