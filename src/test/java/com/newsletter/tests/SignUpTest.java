@@ -28,16 +28,28 @@ public class SignUpTest extends BaseTest {
      * @param expectedKeywords one or more keywords expected to appear in the error text (case-insensitive)
      */
     private void assertValidationErrorContains(String... expectedKeywords) {
+        assertValidationErrorContainsForInput(null, expectedKeywords);
+    }
+
+    /**
+     * Same as {@link #assertValidationErrorContains(String...)} but includes the input value in failure
+     * messages for traceability when used in parameterized tests.
+     *
+     * @param inputValue the input that triggered validation (e.g. invalid email), or null to omit
+     * @param expectedKeywords one or more keywords expected to appear in the error text (case-insensitive)
+     */
+    private void assertValidationErrorContainsForInput(String inputValue, String... expectedKeywords) {
+        String prefix = (inputValue != null ? "Input: \"" + inputValue + "\". " : "");
         assertTrue(signUpPage.waitForErrorMessageToBeVisible(),
-                "Expected a validation error message to appear, but it did not.");
+                prefix + "Expected a validation error message to appear, but it did not.");
 
         String error = signUpPage.getNormalizedErrorMessage();
-        assertFalse(error.isBlank(), "Validation error message should not be blank.");
+        assertFalse(error.isBlank(), prefix + "Validation error message should not be blank.");
 
         String lower = error.toLowerCase();
         for (String keyword : expectedKeywords) {
             assertTrue(lower.contains(keyword.toLowerCase()),
-                    "Validation error message should contain '" + keyword + "' but was: " + error);
+                    prefix + "Validation error message should contain '" + keyword + "' but was: " + error);
         }
     }
 
@@ -146,7 +158,7 @@ public class SignUpTest extends BaseTest {
         // but first ensure we're still on the sign-up page
         assertTrue(signUpPage.isOnSignUpPage(),
                 "Should remain on sign-up form with invalid email: " + invalidEmail);
-        assertValidationErrorContains("email");
+        assertValidationErrorContainsForInput(invalidEmail, "email");
     }
 
     /**

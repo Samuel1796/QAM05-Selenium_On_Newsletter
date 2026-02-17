@@ -133,23 +133,30 @@ jobs:
               fi
             fi
           else
-            # Fallback for JUnit XML (in case the project switches frameworks or report format changes).
+            # JUnit XML (JUnit 5 / Surefire) - extract class#name, status, and failure message for traceability
             if [ -d "$REPORT_DIR" ]; then
-              xmlstarlet sel -t \
-                -m "//testcase" \
-                -v "@classname" -o "#" -v "@name" -o "|" \
-                -v "name((failure|error)[1])" \
-                -n \
-                "$REPORT_DIR"/TEST-*.xml 2>/dev/null > /tmp/junit_cases.txt || true
+              for f in "$REPORT_DIR"/TEST-*.xml; do
+                [ -f "$f" ] || continue
+                xmlstarlet sel -t \
+                  -m "//testcase" \
+                  -v "@classname" -o "#" -v "@name" -o "|" \
+                  -v "name((failure|error)[1])" -o "|" \
+                  -v "(failure|error)[1]/@message" -n \
+                  "$f" 2>/dev/null || true
+              done > /tmp/junit_cases.txt 2>/dev/null || true
             fi
 
-            TOTAL=$(awk -F'|' 'NF{c++} END{print c+0}' /tmp/junit_cases.txt 2>/dev/null || echo 0)
+            TOTAL=$(awk -F'|' 'NF>=2{c++} END{print c+0}' /tmp/junit_cases.txt 2>/dev/null || echo 0)
             FAILED=$(awk -F'|' 'tolower($2)=="failure" || tolower($2)=="error"{c++} END{print c+0}' /tmp/junit_cases.txt 2>/dev/null || echo 0)
             PASSED=$((TOTAL - FAILED))
             SKIPPED=0
 
             if [ "$FAILED" -gt 0 ]; then
-              awk -F'|' 'tolower($2)=="failure" || tolower($2)=="error"{print "FAIL "$1}' /tmp/junit_cases.txt | sort -u | head -20 > /tmp/test_results.txt || true
+              awk -F'|' 'tolower($2)=="failure" || tolower($2)=="error" {
+                msg = ""; for (i=3;i<=NF;i++) msg = msg (i>3?"|":"") $i
+                if (msg != "") msg = " — " msg
+                print "FAIL " $1 msg
+              }' /tmp/junit_cases.txt | sort -u | head -20 > /tmp/test_results.txt || true
             else
               awk -F'|' 'NF{print "PASS "$1}' /tmp/junit_cases.txt | sort -u | head -20 > /tmp/test_results.txt || true
               echo "... (showing up to 20 passing tests)" >> /tmp/test_results.txt
