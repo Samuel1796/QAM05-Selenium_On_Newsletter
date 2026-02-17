@@ -16,12 +16,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-      SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
-      SMTP_PORT: ${{ secrets.SMTP_PORT }}
-      SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
-      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-      EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
-      EMAIL_TO: ${{ secrets.EMAIL_TO }}
       # Run Chrome in headless mode on CI runners.
       CI: "true"
       HEADLESS: "true"
@@ -210,11 +204,6 @@ jobs:
           echo "$FORMATTED" >> $GITHUB_ENV
           echo "EOFMARKER" >> $GITHUB_ENV
 
-          EMAIL_RESULTS=$(echo "$FORMATTED" | sed ':a;N;$!ba;s/\n/<br>/g')
-          echo "EMAIL_RESULTS<<EOFMARKER" >> $GITHUB_ENV
-          echo "$EMAIL_RESULTS" >> $GITHUB_ENV
-          echo "EOFMARKER" >> $GITHUB_ENV
-
           SUMMARY="Passed: ${PASSED_TESTS} | Failed: ${FAILED_TESTS} | Skipped: ${SKIPPED_TESTS} | Total: ${TOTAL_TESTS}"
           echo "SUMMARY_LINE=$SUMMARY" >> $GITHUB_ENV
 
@@ -279,50 +268,6 @@ jobs:
               ]
             }')
           curl -sS -X POST "$SLACK_WEBHOOK_URL" -H 'Content-Type: application/json' -d "$PAYLOAD" > /dev/null
-
-      - name: Email Notification - Success
-        if: always() && env.TEST_FAILED == 'false' && env.SMTP_SERVER != '' && env.SMTP_USERNAME != '' && env.SMTP_PASSWORD != '' && env.EMAIL_FROM != '' && env.EMAIL_TO != ''
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: ${{ env.SMTP_SERVER }}
-          server_port: ${{ env.SMTP_PORT }}
-          secure: false
-          username: ${{ env.SMTP_USERNAME }}
-          password: ${{ env.SMTP_PASSWORD }}
-          subject: "[${{ matrix.java-version }}] Selenium Tests PASSED - ${{ github.repository }}"
-          to: ${{ env.EMAIL_TO }}
-          from: ${{ env.EMAIL_FROM }}
-          html_body: |
-            <h2>:white_check_mark: Selenium Tests PASSED</h2>
-            <p><strong>Repo:</strong> ${{ github.repository }}<br>
-            <strong>Branch:</strong> ${{ github.ref_name }}<br>
-            <strong>Java:</strong> ${{ matrix.java-version }}<br>
-            <strong>Commit:</strong> <code>${{ github.sha }}</code></p>
-            <p><strong>Status:</strong> ${{ env.STATUS_LINE }}</p>
-            <p><strong>Results sample:</strong><br>${{ env.EMAIL_RESULTS }}</p>
-            <p><a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View Workflow Run</a></p>
-
-      - name: Email Notification - Failure
-        if: always() && env.TEST_FAILED == 'true' && env.SMTP_SERVER != '' && env.SMTP_USERNAME != '' && env.SMTP_PASSWORD != '' && env.EMAIL_FROM != '' && env.EMAIL_TO != ''
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: ${{ env.SMTP_SERVER }}
-          server_port: ${{ env.SMTP_PORT }}
-          secure: false
-          username: ${{ env.SMTP_USERNAME }}
-          password: ${{ env.SMTP_PASSWORD }}
-          subject: "[${{ matrix.java-version }}] Selenium Tests FAILED - ${{ github.repository }}"
-          to: ${{ env.EMAIL_TO }}
-          from: ${{ env.EMAIL_FROM }}
-          html_body: |
-            <h2>:x: Selenium Tests FAILED</h2>
-            <p><strong>Repo:</strong> ${{ github.repository }}<br>
-            <strong>Branch:</strong> ${{ github.ref_name }}<br>
-            <strong>Java:</strong> ${{ matrix.java-version }}<br>
-            <strong>Commit:</strong> <code>${{ github.sha }}</code></p>
-            <p><strong>Status:</strong> ${{ env.STATUS_LINE }}</p>
-            <p><strong>Failing tests:</strong><br>${{ env.EMAIL_RESULTS }}</p>
-            <p><a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View Full Logs &amp; Screenshots</a></p>
 
       - name: Fail Job If Tests Failed
         if: always() && env.TEST_FAILED == 'true'
