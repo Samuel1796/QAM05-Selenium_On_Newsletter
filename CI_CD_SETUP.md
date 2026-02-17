@@ -9,6 +9,7 @@ This project uses GitHub Actions to automatically run Selenium tests on every pu
 - ✅ Detailed test reports with HTML output
 - ✅ Screenshot capture on test failure
 - ✅ Slack notifications for pass/fail status
+- ✅ Email notifications via SMTP for pass/fail status
 - ✅ Artifact retention for debugging
 
 ## Prerequisites
@@ -36,7 +37,7 @@ The CI pipeline is defined in `.github/workflows/ci.yml` and includes:
   4. Run Selenium tests with detailed logging
   5. Upload test reports and screenshots
   6. Generate test summary
-  7. Send Slack notifications
+  7. Send Slack and email notifications
 
 ### 2. Test Execution
 Tests are executed using Maven with the Surefire plugin:
@@ -78,6 +79,33 @@ mvn test
 4. Name: `SLACK_WEBHOOK_URL`
 5. Value: Paste the Webhook URL from Step 2
 6. Click "Add secret"
+
+## Email Integration Setup (SMTP)
+
+The workflow sends email notifications to the configured recipient after every run (success or failure), using SMTP.
+
+### Step 1: Gmail App Password (for yoshninjas.1@gmail.com)
+1. Enable 2-Step Verification on the Gmail account
+2. Go to [Google Account → Security → App passwords](https://myaccount.google.com/apppasswords)
+3. Create an app password for "Mail" on "Other" device
+4. Copy the 16-character password
+
+### Step 2: Add SMTP Secrets to GitHub
+1. Go to your GitHub repository
+2. Settings → Secrets and variables → Actions
+3. Add these repository secrets:
+
+| Secret Name    | Value                    | Description                          |
+|----------------|--------------------------|--------------------------------------|
+| `SMTP_HOST`    | `smtp.gmail.com`         | SMTP server address                  |
+| `SMTP_PORT`    | `587`                    | SMTP port (587 for STARTTLS)         |
+| `SMTP_USER`    | `yoshninjas.1@gmail.com` | Sender email address                 |
+| `SMTP_PASSWORD`| *(App password from Step 1)* | Gmail app password (not regular password) |
+| `EMAIL_TO`     | `sbakye1796@gmail.com`   | Recipient email address              |
+
+### Step 3: Verify Email Setup
+1. Push a commit or trigger the workflow manually
+2. Check the recipient inbox (and spam folder) for the notification
 
 ### Step 4: Verify Setup
 1. Push a commit to the `master` branch
@@ -234,5 +262,6 @@ on:
 For issues with:
 - **GitHub Actions:** Check the Actions log in GitHub
 - **Slack Integration:** Verify webhook URL in repo secrets
+- **Email Integration:** Verify SMTP secrets (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, EMAIL_TO)
 - **Test Failures:** Download test reports from artifacts
 - **Maven:** Check `pom.xml` configuration
