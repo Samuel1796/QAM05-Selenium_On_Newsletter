@@ -157,7 +157,7 @@ jobs:
       - name: Format Notification Payload
         if: always()
         run: |
-          FORMATTED=$(echo "$TEST_RESULTS" | sed 's/^PASS /:white_check_mark: /g' | sed 's/^FAIL /:x: /g')
+          FORMATTED=$(echo "$TEST_RESULTS" | sed 's/^PASS /✅ /g' | sed 's/^FAIL /❌ /g')
           echo "FORMATTED_RESULTS<<EOFMARKER" >> $GITHUB_ENV
           echo "$FORMATTED" >> $GITHUB_ENV
           echo "EOFMARKER" >> $GITHUB_ENV
