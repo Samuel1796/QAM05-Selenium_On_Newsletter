@@ -64,24 +64,6 @@ jobs:
           path: target/surefire-reports
           retention-days: 30
 
-      - name: Generate Test Summary
-        if: always()
-        continue-on-error: true
-        run: |
-          echo "## Test Execution Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Java Version:** ${{ matrix.java-version }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Test Exit Code:** $TEST_EXIT_CODE" >> $GITHUB_STEP_SUMMARY
-
-          if [ -d target/surefire-reports ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Test Reports Generated" >> $GITHUB_STEP_SUMMARY
-            echo "**Reports Location:** \`target/surefire-reports/\`" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "No surefire reports directory found." >> $GITHUB_STEP_SUMMARY
-          fi
-
       - name: Upload Screenshots
         if: always()
         uses: actions/upload-artifact@v4
@@ -210,7 +192,7 @@ jobs:
           echo "$FORMATTED" >> $GITHUB_ENV
           echo "EOFMARKER" >> $GITHUB_ENV
 
-          SUMMARY="Passed: ${PASSED_TESTS} | Failed: ${FAILED_TESTS} | Skipped: ${SKIPPED_TESTS} | Total: ${TOTAL_TESTS}"
+          SUMMARY="${PASSED_TESTS} passed · ${FAILED_TESTS} failed · ${SKIPPED_TESTS} skipped · ${TOTAL_TESTS} total"
           echo "SUMMARY_LINE=$SUMMARY" >> $GITHUB_ENV
 
           if [ "${TEST_FAILED}" = "true" ] && [ "${FAIL_REASON}" = "build_error" ]; then
@@ -221,29 +203,59 @@ jobs:
             echo "STATUS_LINE=:white_check_mark: Tests passed. ${SUMMARY}" >> $GITHUB_ENV
           fi
 
+      - name: Generate Test Summary
+        if: always()
+        continue-on-error: true
+        run: |
+          echo "## 📋 Test Execution Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| | |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Java Version** | ${{ matrix.java-version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Status** | $([ "${TEST_FAILED}" = "true" ] && echo "❌ Failed" || echo "✅ Passed") |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Exit Code** | ${TEST_EXIT_CODE:-0} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Passed | Failed | Skipped | Total |" >> $GITHUB_STEP_SUMMARY
+          echo "|:---:|:---:|:---:|:---:|" >> $GITHUB_STEP_SUMMARY
+          echo "| ${PASSED_TESTS} | ${FAILED_TESTS} | ${SKIPPED_TESTS} | ${TOTAL_TESTS} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${TEST_FAILED}" = "true" ] && [ -n "$FORMATTED_RESULTS" ]; then
+            echo "### Failed Tests" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "$FORMATTED_RESULTS" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ -d target/surefire-reports ]; then
+            echo "### Artifacts" >> $GITHUB_STEP_SUMMARY
+            echo "- Reports: \`target/surefire-reports/\`" >> $GITHUB_STEP_SUMMARY
+          fi
+
       - name: Slack Notification - Success
         if: always() && env.TEST_FAILED == 'false' && env.SLACK_WEBHOOK_URL != ''
         continue-on-error: true
         run: |
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           SHORT_SHA="$(echo "${{ github.sha }}" | cut -c1-7)"
+          META="*Repository:* ${{ github.repository }} · *Branch:* ${{ github.ref_name }} · *Java:* ${{ matrix.java-version }} · *Commit:* \`$SHORT_SHA\`"
           PAYLOAD=$(jq -n \
-            --arg text ":white_check_mark: Selenium Tests PASSED" \
-            --arg repo "${{ github.repository }}" \
-            --arg branch "${{ github.ref_name }}" \
-            --arg java "${{ matrix.java-version }}" \
-            --arg sha "$SHORT_SHA" \
-            --arg status "$STATUS_LINE" \
+            --arg text "✅ Selenium Tests PASSED" \
+            --arg meta "$META" \
+            --arg summary "$SUMMARY_LINE" \
             --arg results "$FORMATTED_RESULTS" \
             --arg url "$RUN_URL" \
             '{
               text: $text,
               blocks: [
-                { type: "header", text: { type: "plain_text", text: "Selenium Tests PASSED" } },
-                { type: "section", text: { type: "mrkdwn", text: ("*Repo:* " + $repo + "\n*Branch:* " + $branch + "\n*Java:* " + $java + "\n*Commit:* `" + $sha + "`") } },
-                { type: "section", text: { type: "mrkdwn", text: ("*Status:* " + $status) } },
-                { type: "section", text: { type: "mrkdwn", text: ("*Sample results (first lines):*\n```" + $results + "```") } },
-                { type: "section", text: { type: "mrkdwn", text: ("<" + $url + "|View workflow run & artifacts>") } }
+                { type: "header", text: { type: "plain_text", text: "✅ Selenium Tests PASSED", emoji: true } },
+                { type: "section", text: { type: "mrkdwn", text: $meta } },
+                { type: "section", text: { type: "mrkdwn", text: ("*Summary*\n" + $summary) } },
+                { type: "section", text: { type: "mrkdwn", text: ("*Results*\n```" + $results + "```") } },
+                { type: "divider" },
+                { type: "section", text: { type: "mrkdwn", text: ("<" + $url + "|View workflow run & artifacts →>") } }
               ]
             }')
           curl -sS -X POST "$SLACK_WEBHOOK_URL" -H 'Content-Type: application/json' -d "$PAYLOAD" > /dev/null
@@ -254,40 +266,22 @@ jobs:
         run: |
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           SHORT_SHA="$(echo "${{ github.sha }}" | cut -c1-7)"
-
-          # Build formatted output block with all test result details
-          FORMATTED_BLOCK="TEST_EXIT_CODE: ${TEST_EXIT_CODE:-0}
-          TEST_RESULTS: ${TEST_RESULTS}
-          TOTAL_TESTS: ${TOTAL_TESTS}
-          PASSED_TESTS: ${PASSED_TESTS}
-          FAILED_TESTS: ${FAILED_TESTS}
-          SKIPPED_TESTS: ${SKIPPED_TESTS}
-          TEST_FAILED: ${TEST_FAILED}
-          FAIL_REASON: ${FAIL_REASON}
-          FORMATTED_RESULTS: ${FORMATTED_RESULTS}
-          SUMMARY_LINE: ${SUMMARY_LINE}
-          STATUS_LINE: ${STATUS_LINE}"
-          FORMATTED_BLOCK=$(echo "$FORMATTED_BLOCK" | sed 's/^          //')
+          META="*Repository:* ${{ github.repository }} · *Branch:* ${{ github.ref_name }} · *Java:* ${{ matrix.java-version }} · *Commit:* \`$SHORT_SHA\`"
+          RESULTS_BLOCK=$'*Exit code:* '"${TEST_EXIT_CODE:-0}"$' · *Reason:* '"${FAIL_REASON}"$'\n*Summary:* '"${SUMMARY_LINE}"$'\n\n*Failed test(s):*\n```\n'"${FORMATTED_RESULTS}"$'\n```'
 
           PAYLOAD=$(jq -n \
-            --arg text ":x: One or more Selenium tests failed." \
-            --arg repo "${{ github.repository }}" \
-            --arg branch "${{ github.ref_name }}" \
-            --arg java "${{ matrix.java-version }}" \
-            --arg sha "$SHORT_SHA" \
-            --arg status "$STATUS_LINE" \
-            --arg results "$FORMATTED_RESULTS" \
-            --arg block "$FORMATTED_BLOCK" \
+            --arg text "❌ Selenium Tests Failed" \
+            --arg meta "$META" \
+            --arg block "$RESULTS_BLOCK" \
             --arg url "$RUN_URL" \
             '{
               text: $text,
               blocks: [
-                { type: "header", text: { type: "plain_text", text: "One or more Selenium tests failed." } },
-                { type: "section", text: { type: "mrkdwn", text: ("*Repo:* " + $repo + "\n*Branch:* " + $branch + "\n*Java:* " + $java + "\n*Commit:* `" + $sha + "`") } },
-                { type: "section", text: { type: "mrkdwn", text: ("*Status:* " + $status) } },
-                { type: "section", text: { type: "mrkdwn", text: ("*Failing tests:*\n```" + $results + "```") } },
-                { type: "section", text: { type: "mrkdwn", text: ("*Full results:*\n```" + $block + "```") } },
-                { type: "section", text: { type: "mrkdwn", text: ("<" + $url + "|View workflow run, logs & artifacts>") } }
+                { type: "header", text: { type: "plain_text", text: "❌ Selenium Tests Failed", emoji: true } },
+                { type: "section", text: { type: "mrkdwn", text: $meta } },
+                { type: "section", text: { type: "mrkdwn", text: $block } },
+                { type: "divider" },
+                { type: "section", text: { type: "mrkdwn", text: ("<" + $url + "|View workflow run, logs & artifacts →>") } }
               ]
             }')
           curl -sS -X POST "$SLACK_WEBHOOK_URL" -H 'Content-Type: application/json' -d "$PAYLOAD" > /dev/null
@@ -301,24 +295,30 @@ jobs:
           server_port: ${{ env.SMTP_PORT }}
           username: ${{ env.SMTP_USER }}
           password: ${{ env.SMTP_PASSWORD }}
-          subject: "Selenium Tests PASSED - ${{ github.repository }} (Java ${{ matrix.java-version }})"
+          subject: "✅ Selenium Tests PASSED - ${{ github.repository }} (Java ${{ matrix.java-version }})"
           from: "Selenium CI <${{ env.SMTP_USER }}>"
           to: ${{ env.EMAIL_TO }}
-          body: |
-            Selenium Tests PASSED
-
-            Repo: ${{ github.repository }}
-            Branch: ${{ github.ref_name }}
-            Java Version: ${{ matrix.java-version }}
-            Commit: ${{ github.sha }}
-
-            Status: ${{ env.STATUS_LINE }}
-            Summary: ${{ env.SUMMARY_LINE }}
-
-            Sample results:
-            ${{ env.FORMATTED_RESULTS }}
-
-            View workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          html_body: |
+            <!DOCTYPE html>
+            <html>
+            <head><meta charset="utf-8"><style>body{font-family:Segoe UI,Helvetica,Arial,sans-serif;margin:24px;color:#333;line-height:1.5}.header{background:#22c55e;color:white;padding:16px 20px;border-radius:8px;margin-bottom:24px;font-size:18px;font-weight:600}.meta{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px;margin-bottom:20px}.meta p{margin:6px 0}.table{border-collapse:collapse;width:100%;max-width:320px;margin:16px 0}.table th,.table td{border:1px solid #e2e8f0;padding:10px 14px;text-align:left}.table th{background:#f1f5f9;font-weight:600}.results{background:#f8fafc;border-radius:6px;padding:12px;font-family:monospace;font-size:13px;white-space:pre-wrap;margin:16px 0}.link{color:#2563eb;text-decoration:none}.footer{margin-top:24px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:13px;color:#64748b}</style></head>
+            <body>
+            <div class="header">✅ Selenium Tests PASSED</div>
+            <div class="meta">
+              <p><strong>Repository:</strong> ${{ github.repository }}</p>
+              <p><strong>Branch:</strong> ${{ github.ref_name }}</p>
+              <p><strong>Java Version:</strong> ${{ matrix.java-version }}</p>
+              <p><strong>Commit:</strong> <code>${{ github.sha }}</code></p>
+            </div>
+            <table class="table">
+              <tr><th>Passed</th><th>Failed</th><th>Skipped</th><th>Total</th></tr>
+              <tr><td>${{ env.PASSED_TESTS }}</td><td>${{ env.FAILED_TESTS }}</td><td>${{ env.SKIPPED_TESTS }}</td><td>${{ env.TOTAL_TESTS }}</td></tr>
+            </table>
+            <p><strong>Results</strong></p>
+            <div class="results">${{ env.FORMATTED_RESULTS }}</div>
+            <p class="footer"><a class="link" href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View workflow run & artifacts →</a></p>
+            </body>
+            </html>
 
       - name: Email Notification - Failure
         if: always() && env.TEST_FAILED == 'true' && env.SMTP_PASSWORD != ''
@@ -329,33 +329,32 @@ jobs:
           server_port: ${{ env.SMTP_PORT }}
           username: ${{ env.SMTP_USER }}
           password: ${{ env.SMTP_PASSWORD }}
-          subject: "One or more Selenium tests failed - ${{ github.repository }} (Java ${{ matrix.java-version }})"
+          subject: "❌ Selenium Tests Failed - ${{ github.repository }} (Java ${{ matrix.java-version }})"
           from: "Selenium CI <${{ env.SMTP_USER }}>"
           to: ${{ env.EMAIL_TO }}
-          body: |
-            One or more Selenium tests failed.
-
-            Repo: ${{ github.repository }}
-            Branch: ${{ github.ref_name }}
-            Java Version: ${{ matrix.java-version }}
-            Commit: ${{ github.sha }}
-
-            TEST_EXIT_CODE: ${{ env.TEST_EXIT_CODE }}
-            TOTAL_TESTS: ${{ env.TOTAL_TESTS }}
-            PASSED_TESTS: ${{ env.PASSED_TESTS }}
-            FAILED_TESTS: ${{ env.FAILED_TESTS }}
-            SKIPPED_TESTS: ${{ env.SKIPPED_TESTS }}
-            FAIL_REASON: ${{ env.FAIL_REASON }}
-            SUMMARY_LINE: ${{ env.SUMMARY_LINE }}
-            STATUS_LINE: ${{ env.STATUS_LINE }}
-
-            TEST_RESULTS:
-            ${{ env.TEST_RESULTS }}
-
-            FORMATTED_RESULTS:
-            ${{ env.FORMATTED_RESULTS }}
-
-            View workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          html_body: |
+            <!DOCTYPE html>
+            <html>
+            <head><meta charset="utf-8"><style>body{font-family:Segoe UI,Helvetica,Arial,sans-serif;margin:24px;color:#333;line-height:1.5}.header{background:#dc2626;color:white;padding:16px 20px;border-radius:8px;margin-bottom:24px;font-size:18px;font-weight:600}.meta{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px;margin-bottom:20px}.meta p{margin:6px 0}.table{border-collapse:collapse;width:100%;max-width:320px;margin:16px 0}.table th,.table td{border:1px solid #e2e8f0;padding:10px 14px;text-align:left}.table th{background:#f1f5f9;font-weight:600}.results{background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:12px;font-family:monospace;font-size:13px;white-space:pre-wrap;margin:16px 0}.link{color:#2563eb;text-decoration:none}.footer{margin-top:24px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:13px;color:#64748b}.stat{display:inline-block;margin-right:16px;margin-bottom:8px}</style></head>
+            <body>
+            <div class="header">❌ Selenium Tests Failed</div>
+            <div class="meta">
+              <p><strong>Repository:</strong> ${{ github.repository }}</p>
+              <p><strong>Branch:</strong> ${{ github.ref_name }}</p>
+              <p><strong>Java Version:</strong> ${{ matrix.java-version }}</p>
+              <p><strong>Commit:</strong> <code>${{ github.sha }}</code></p>
+            </div>
+            <p><strong>Summary</strong></p>
+            <p><span class="stat">Exit code: <code>${{ env.TEST_EXIT_CODE }}</code></span><span class="stat">Reason: <code>${{ env.FAIL_REASON }}</code></span></p>
+            <table class="table">
+              <tr><th>Passed</th><th>Failed</th><th>Skipped</th><th>Total</th></tr>
+              <tr><td>${{ env.PASSED_TESTS }}</td><td>${{ env.FAILED_TESTS }}</td><td>${{ env.SKIPPED_TESTS }}</td><td>${{ env.TOTAL_TESTS }}</td></tr>
+            </table>
+            <p><strong>Failed test(s)</strong></p>
+            <div class="results">${{ env.FORMATTED_RESULTS }}</div>
+            <p class="footer"><a class="link" href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View workflow run, logs & artifacts →</a></p>
+            </body>
+            </html>
 
       - name: Log Test Failure (Job Continues)
         if: always() && env.TEST_FAILED == 'true'
