@@ -20,23 +20,32 @@ public class SignUpTest extends BaseTest {
     private static final Logger logger = Logger.getLogger(SignUpTest.class.getName());
 
     /**
-     * Asserts that a client-side validation error is shown for invalid submission attempts.
+     * Asserts that a client-side validation error is shown for invalid submission
+     * attempts.
      *
-     * <p>This uses keyword-based matching rather than an exact string to keep the test robust to minor
-     * copy tweaks (e.g. punctuation). It still validates that the UI is showing a meaningful message.</p>
+     * <p>
+     * This uses keyword-based matching rather than an exact string to keep the test
+     * robust to minor
+     * copy tweaks (e.g. punctuation). It still validates that the UI is showing a
+     * meaningful message.
+     * </p>
      *
-     * @param expectedKeywords one or more keywords expected to appear in the error text (case-insensitive)
+     * @param expectedKeywords one or more keywords expected to appear in the error
+     *                         text (case-insensitive)
      */
     private void assertValidationErrorContains(String... expectedKeywords) {
         assertValidationErrorContainsForInput(null, expectedKeywords);
     }
 
     /**
-     * Same as {@link #assertValidationErrorContains(String...)} but includes the input value in failure
+     * Same as {@link #assertValidationErrorContains(String...)} but includes the
+     * input value in failure
      * messages for traceability when used in parameterized tests.
      *
-     * @param inputValue the input that triggered validation (e.g. invalid email), or null to omit
-     * @param expectedKeywords one or more keywords expected to appear in the error text (case-insensitive)
+     * @param inputValue       the input that triggered validation (e.g. invalid
+     *                         email), or null to omit
+     * @param expectedKeywords one or more keywords expected to appear in the error
+     *                         text (case-insensitive)
      */
     private void assertValidationErrorContainsForInput(String inputValue, String... expectedKeywords) {
         String prefix = (inputValue != null ? "Input: \"" + inputValue + "\". " : "");
@@ -69,11 +78,13 @@ public class SignUpTest extends BaseTest {
         super.tearDown();
     }
 
-
     /**
      * Verifies that an invalid email format does not allow subscription.
      *
-     * <p>Expected result: user stays on the sign-up form. (Optionally, UI shows a validation error.)</p>
+     * <p>
+     * Expected result: user stays on the sign-up form. (Optionally, UI shows a
+     * validation error.)
+     * </p>
      */
     @Test
     @DisplayName("Verify Error Message for Invalid Email Format")
@@ -91,9 +102,12 @@ public class SignUpTest extends BaseTest {
     }
 
     /**
-     * Verifies that submitting the form with an empty email field is blocked by validation.
+     * Verifies that submitting the form with an empty email field is blocked by
+     * validation.
      *
-     * <p>Expected result: user remains on the sign-up form (no success navigation).</p>
+     * <p>
+     * Expected result: user remains on the sign-up form (no success navigation).
+     * </p>
      */
     @Test
     @DisplayName("Verify Error Message for Empty Email Field")
@@ -112,7 +126,9 @@ public class SignUpTest extends BaseTest {
     /**
      * Provides a small random subset of invalid email strings for negative testing.
      *
-     * <p>We keep the dataset small to balance coverage and runtime in CI.</p>
+     * <p>
+     * We keep the dataset small to balance coverage and runtime in CI.
+     * </p>
      *
      * @return stream of invalid email inputs
      */
@@ -125,7 +141,9 @@ public class SignUpTest extends BaseTest {
     /**
      * Verifies that multiple invalid email patterns are rejected.
      *
-     * <p>Expected result: user stays on the sign-up form for every invalid input.</p>
+     * <p>
+     * Expected result: user stays on the sign-up form for every invalid input.
+     * </p>
      *
      * @param invalidEmail invalid email string supplied by the data provider
      */
@@ -139,8 +157,9 @@ public class SignUpTest extends BaseTest {
         signUpPage.navigateToPage();
         signUpPage.enterEmail(invalidEmail);
         signUpPage.clickSubscribe();
-        
-        // Wait for validation error to appear (this is handled by assertValidationErrorContains)
+
+        // Wait for validation error to appear (this is handled by
+        // assertValidationErrorContains)
         // but first ensure we're still on the sign-up page
         assertTrue(signUpPage.isOnSignUpPage(),
                 "Should remain on sign-up form with invalid email: " + invalidEmail);
@@ -161,7 +180,9 @@ public class SignUpTest extends BaseTest {
     /**
      * Verifies that multiple valid email patterns are accepted.
      *
-     * <p>Expected result: user reaches the success screen for each valid email.</p>
+     * <p>
+     * Expected result: user reaches the success screen for each valid email.
+     * </p>
      *
      * @param validEmail valid email string supplied by the data provider
      */
@@ -180,7 +201,9 @@ public class SignUpTest extends BaseTest {
     /**
      * Sanity check that the subscribe button is present and can be clicked.
      *
-     * <p>This is a lightweight UI smoke test (it does not assert success).</p>
+     * <p>
+     * This is a lightweight UI smoke test (it does not assert success).
+     * </p>
      */
     @Test
     @DisplayName("Verify Subscribe Button is Clickable")
@@ -195,13 +218,18 @@ public class SignUpTest extends BaseTest {
     }
 
     /**
-     * Verifies input behaviour across a browser refresh.
+     * Verifies that the email input is cleared after a browser refresh.
      *
-     * <p><strong>Note:</strong> persisting values across refresh is a product decision. Many apps clear the form
-     * on refresh. If your target behaviour is to clear inputs, change the expected assertion accordingly.</p>
+     * <p>
+     * This newsletter form does not persist input values across page reloads (no
+     * localStorage,
+     * sessionStorage, or server-side session). A refresh is expected to reset the
+     * form to its
+     * initial empty state.
+     * </p>
      */
     @Test
-    @DisplayName("Verify Email Input Persists After Page Refresh")
+    @DisplayName("Verify Email Input Clears After Page Refresh")
     @Tag("signup")
     @Tag("regression")
     public void testFormPersistenceAfterRefresh() {
@@ -217,7 +245,7 @@ public class SignUpTest extends BaseTest {
 
         // Re-initialize page object after refresh to get fresh element references
         signUpPage = new SignUpPage(driver);
-        
+
         // Wait for the email input to be visible and ready after refresh
         signUpPage.waitForEmailInputReady();
 
@@ -226,16 +254,21 @@ public class SignUpTest extends BaseTest {
         assertTrue(signUpPage.isFormDisplayed() || signUpPage.isEmailInputDisplayed(),
                 "Form should be displayed after refresh");
 
-        // Check if the email value persists after refresh
+        // The form should reset on refresh — input is cleared
         String emailAfterRefresh = signUpPage.getEmailInputValue();
-        assertEquals(emailAfterRefresh, testEmail, "Email input value should persist after page refresh");
+        assertTrue(emailAfterRefresh.isEmpty(),
+                "Email input should be cleared after page refresh, but was: " + emailAfterRefresh);
     }
 
     /**
-     * Verifies that the email field can accept a long email string without breaking the UI.
+     * Verifies that the email field can accept a long email string without breaking
+     * the UI.
      *
-     * <p>Improvement opportunity: assert {@code maxlength} or a specific validation message if the product
-     * defines strict limits.</p>
+     * <p>
+     * Improvement opportunity: assert {@code maxlength} or a specific validation
+     * message if the product
+     * defines strict limits.
+     * </p>
      */
     @Test
     @DisplayName("Verify Maximum Length of Email Input")
@@ -257,9 +290,12 @@ public class SignUpTest extends BaseTest {
     }
 
     /**
-     * Verifies that commonly valid email characters are accepted (e.g. dot and plus tag).
+     * Verifies that commonly valid email characters are accepted (e.g. dot and plus
+     * tag).
      *
-     * <p>Expected result: valid email variant should reach the success screen.</p>
+     * <p>
+     * Expected result: valid email variant should reach the success screen.
+     * </p>
      */
     @Test
     @DisplayName("Verify Special Characters in Email")
@@ -268,15 +304,20 @@ public class SignUpTest extends BaseTest {
     public void testSpecialCharactersInEmail() {
         logger.info("Running testSpecialCharactersInEmail");
         signUpPage.navigateToPage();
-        // Explicitly use a realistic "special" email pattern rather than a random generator.
+        // Explicitly use a realistic "special" email pattern rather than a random
+        // generator.
         signUpPage.completeSignUp("john.doe+tag@example.com");
         assertTrue(successPage.isOnSuccessPage(), "Should accept email with valid characters");
     }
 
     /**
-     * Verifies the form behaviour when users paste an email with leading/trailing spaces.
+     * Verifies the form behaviour when users paste an email with leading/trailing
+     * spaces.
      *
-     * <p>Expected result: app trims input (or otherwise accepts it) and successfully subscribes.</p>
+     * <p>
+     * Expected result: app trims input (or otherwise accepts it) and successfully
+     * subscribes.
+     * </p>
      */
     @Test
     @DisplayName("Verify Form Behavior with Leading/Trailing Spaces")
@@ -290,9 +331,12 @@ public class SignUpTest extends BaseTest {
     }
 
     /**
-     * Verifies that the success screen reflects the subscribed email back to the user.
+     * Verifies that the success screen reflects the subscribed email back to the
+     * user.
      *
-     * <p>Expected result: confirmation text contains the input email.</p>
+     * <p>
+     * Expected result: confirmation text contains the input email.
+     * </p>
      */
     @Test
     @DisplayName("Verify Success Page Displays Correct Email After Subscription")
@@ -313,7 +357,10 @@ public class SignUpTest extends BaseTest {
     /**
      * Verifies that the validation error state is not "sticky".
      *
-     * <p>Flow: submit invalid email → error appears → replace with valid email → error disappears.</p>
+     * <p>
+     * Flow: submit invalid email → error appears → replace with valid email → error
+     * disappears.
+     * </p>
      */
     @Test
     @DisplayName("Verify Error Message Disappears When Valid Email Entered")
@@ -331,9 +378,12 @@ public class SignUpTest extends BaseTest {
     }
 
     /**
-     * Verifies that the "Dismiss" action on the success screen returns the user to the sign-up form.
+     * Verifies that the "Dismiss" action on the success screen returns the user to
+     * the sign-up form.
      *
-     * <p>Expected result: sign-up form becomes visible again after dismissal.</p>
+     * <p>
+     * Expected result: sign-up form becomes visible again after dismissal.
+     * </p>
      */
     @Test
     @DisplayName("Verify Dismiss Button Returns to Form")

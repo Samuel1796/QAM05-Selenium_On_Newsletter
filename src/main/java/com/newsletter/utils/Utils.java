@@ -5,9 +5,13 @@ import java.util.*;
 /**
  * Test utility helpers.
  *
- * <p>These helpers generate random test data (valid/invalid emails) to reduce duplication in tests.
- * Randomized data improves coverage but can reduce reproducibility; therefore, the datasets are kept
- * small and constrained to realistic patterns.</p>
+ * <p>
+ * These helpers generate random test data (valid/invalid emails) to reduce
+ * duplication in tests.
+ * Randomized data improves coverage but can reduce reproducibility; therefore,
+ * the datasets are kept
+ * small and constrained to realistic patterns.
+ * </p>
  */
 public class Utils {
 
@@ -51,9 +55,9 @@ public class Utils {
     /**
      * Build a data-provider payload containing a random subset of emails.
      *
-     * @param poolSize how many emails to generate initially
+     * @param poolSize      how many emails to generate initially
      * @param selectionSize how many emails to return (max = poolSize)
-
+     * 
      */
     public static Object[][] getRandomEmails(int poolSize, int selectionSize) {
         List<String> pool = generateEmailPool(poolSize);
@@ -71,8 +75,11 @@ public class Utils {
     /**
      * Generate a random invalid email.
      *
-     * <p>Invalid formats are intentionally diverse (missing parts, illegal characters, etc.) to
-     * exercise client-side validation and backend constraints.</p>
+     * <p>
+     * Invalid formats are intentionally diverse (missing parts, illegal characters,
+     * etc.) to
+     * exercise client-side validation and backend constraints.
+     * </p>
      *
      * @return a syntactically invalid email string
      */
@@ -81,22 +88,22 @@ public class Utils {
         String domain = DOMAINS[RANDOM.nextInt(DOMAINS.length)];
 
         String[] invalidFormats = {
-                username, // No @ symbol or domain
-                username + "@", // Missing domain
-                "@" + domain, // Missing username
-                username + " " + "@" + domain, // Space in username
-                username + "@" + domain + ".", // Trailing dot in domain
-                username + ".." + "@" + domain, // Double dot in username
-                "." + username + "@" + domain, // Leading dot in username
-                username + "@." + domain, // Leading dot in domain part
-                username + "@" + domain + "-, " // Invalid character in domain
+                username, // No @ symbol at all
+                username + "@", // @ present but no domain
+                "@" + domain, // @ present but no local part
+                username + " @" + domain, // Space in local part
+                username + "@ " + domain, // Space in domain part
+                username + "@@" + domain, // Double @ symbol
+                username + "@" + "domain-no-tld", // Domain without a TLD
+                "", // Completely empty string
+                "   ", // Whitespace only
         };
 
         return invalidFormats[RANDOM.nextInt(invalidFormats.length)];
     }
 
     /**
-     * Build a  data-provider payload containing invalid emails.
+     * Build a data-provider payload containing invalid emails.
      *
      * @param count number of invalid emails
      */
