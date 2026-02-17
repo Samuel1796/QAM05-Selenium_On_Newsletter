@@ -97,7 +97,6 @@ jobs:
           > /tmp/failed_tests.txt
 
           # JUnit XML (JUnit 5 / Surefire) - extract class#name, status, and failure message for traceability
-            # JUnit XML (JUnit 5 / Surefire) - extract class#name, status, and failure message for traceability
             if [ -d "$REPORT_DIR" ]; then
               for f in "$REPORT_DIR"/TEST-*.xml; do
                 [ -f "$f" ] || continue
@@ -125,7 +124,7 @@ jobs:
               awk -F'|' 'NF{print "PASS "$1}' /tmp/junit_cases.txt | sed 's/com\.newsletter\.tests\.//g' | sort -u | head -20 > /tmp/test_results.txt || true
               echo "... (showing up to 20 passing tests)" >> /tmp/test_results.txt
             fi
-          fi
+
 
           RESULTS=$(cat /tmp/test_results.txt)
           if [ -z "$RESULTS" ]; then
