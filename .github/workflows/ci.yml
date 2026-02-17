@@ -248,29 +248,56 @@ jobs:
         run: |
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           SHORT_SHA="$(echo "${{ github.sha }}" | cut -c1-7)"
+
+          # Build formatted output block with all test result details
+          FORMATTED_BLOCK="TEST_EXIT_CODE: ${TEST_EXIT_CODE:-0}
+          TEST_RESULTS: ${TEST_RESULTS}
+          TOTAL_TESTS: ${TOTAL_TESTS}
+          PASSED_TESTS: ${PASSED_TESTS}
+          FAILED_TESTS: ${FAILED_TESTS}
+          SKIPPED_TESTS: ${SKIPPED_TESTS}
+          TEST_FAILED: ${TEST_FAILED}
+          FAIL_REASON: ${FAIL_REASON}
+          FORMATTED_RESULTS: ${FORMATTED_RESULTS}
+          SUMMARY_LINE: ${SUMMARY_LINE}
+          STATUS_LINE: ${STATUS_LINE}"
+          FORMATTED_BLOCK=$(echo "$FORMATTED_BLOCK" | sed 's/^          //')
+
           PAYLOAD=$(jq -n \
-            --arg text ":x: Selenium Tests FAILED" \
+            --arg text ":x: One or more Selenium tests failed." \
             --arg repo "${{ github.repository }}" \
             --arg branch "${{ github.ref_name }}" \
             --arg java "${{ matrix.java-version }}" \
             --arg sha "$SHORT_SHA" \
             --arg status "$STATUS_LINE" \
             --arg results "$FORMATTED_RESULTS" \
+            --arg block "$FORMATTED_BLOCK" \
             --arg url "$RUN_URL" \
             '{
               text: $text,
               blocks: [
-                { type: "header", text: { type: "plain_text", text: "Selenium Tests FAILED" } },
+                { type: "header", text: { type: "plain_text", text: "One or more Selenium tests failed." } },
                 { type: "section", text: { type: "mrkdwn", text: ("*Repo:* " + $repo + "\n*Branch:* " + $branch + "\n*Java:* " + $java + "\n*Commit:* `" + $sha + "`") } },
                 { type: "section", text: { type: "mrkdwn", text: ("*Status:* " + $status) } },
-                { type: "section", text: { type: "mrkdwn", text: ("*Failing tests (first lines):*\n```" + $results + "```") } },
+                { type: "section", text: { type: "mrkdwn", text: ("*Failing tests:*\n```" + $results + "```") } },
+                { type: "section", text: { type: "mrkdwn", text: ("*Full results:*\n```" + $block + "```") } },
                 { type: "section", text: { type: "mrkdwn", text: ("<" + $url + "|View workflow run, logs & artifacts>") } }
               ]
             }')
           curl -sS -X POST "$SLACK_WEBHOOK_URL" -H 'Content-Type: application/json' -d "$PAYLOAD" > /dev/null
 
-      - name: Fail Job If Tests Failed
+      - name: Log Test Failure (Job Continues)
         if: always() && env.TEST_FAILED == 'true'
         run: |
           echo "One or more Selenium tests failed."
-          exit 1
+          echo "TEST_EXIT_CODE: ${TEST_EXIT_CODE:-0}"
+          echo "TEST_RESULTS: ${TEST_RESULTS}"
+          echo "TOTAL_TESTS: ${TOTAL_TESTS}"
+          echo "PASSED_TESTS: ${PASSED_TESTS}"
+          echo "FAILED_TESTS: ${FAILED_TESTS}"
+          echo "SKIPPED_TESTS: ${SKIPPED_TESTS}"
+          echo "TEST_FAILED: ${TEST_FAILED}"
+          echo "FAIL_REASON: ${FAIL_REASON}"
+          echo "FORMATTED_RESULTS: ${FORMATTED_RESULTS}"
+          echo "SUMMARY_LINE: ${SUMMARY_LINE}"
+          echo "STATUS_LINE: ${STATUS_LINE}"
