@@ -1,37 +1,52 @@
 name: Selenium CI Pipeline
 
+# GitHub Actions workflow that runs the Java Selenium newsletter tests
+# on every change to master and reports rich results via artifacts,
+# Slack notifications and email.
+
 on:
   push:
     branches: [ master ]
   pull_request:
     branches: [ master ]
-  # Optional: custom trigger for external systems (kept for flexibility)
+  # Optional: custom trigger for external systems (e.g. dashboards, schedulers).
   repository_dispatch:
     types: [ newsletter-update ]
-  # Manual trigger for ad‑hoc runs
+  # Manual trigger so tests can be run on demand from the GitHub UI.
   workflow_dispatch:
 
 jobs:
+  # Single job responsible for compiling the project,
+  # executing Selenium tests and sending notifications.
   selenium-tests:
+    # Use the latest Ubuntu runner image as the execution environment.
     runs-on: ubuntu-latest
+    # Environment variables, mostly sourced from encrypted GitHub secrets.
     env:
+      # Incoming webhook URL used by the Slack notification steps.
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
       # SMTP configuration for email notifications (Gmail: smtp.gmail.com, port 587)
       SMTP_HOST: ${{ secrets.SMTP_HOST }}
       SMTP_PORT: ${{ secrets.SMTP_PORT }}
       SMTP_USER: ${{ secrets.SMTP_USER }}
       SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      # Comma‑separated list of email recipients for the notification actions.
       EMAIL_TO: ${{ secrets.EMAIL_TO }}
-      # Run Chrome in headless mode on CI runners.
+      # Run Chrome/Selenium in headless mode on CI runners.
       CI: "true"
       HEADLESS: "true"
 
+    # Strategy/matrix definition – currently only Java 17,
+    # but can be extended to multiple versions if needed.
     strategy:
+      # Do not cancel other matrix runs if one fails; we still
+      # want complete reporting from every variant.
       fail-fast: false
       matrix:
         java-version: [ "17" ]
 
     steps:
+      # 1) Prepare the Java project
       - name: Checkout Code
         uses: actions/checkout@v4
 
@@ -45,6 +60,7 @@ jobs:
       - name: Install Dependencies
         run: mvn clean install -DskipTests
 
+      # 2) Execute the JUnit/Selenium test suite.
       - name: Run Selenium Tests
         id: selenium_tests
         continue-on-error: true
@@ -55,6 +71,7 @@ jobs:
           set -e
           echo "TEST_EXIT_CODE=$TEST_EXIT" >> $GITHUB_ENV
 
+      # 3) Persist raw XML test reports as downloadable artifacts.
       - name: Upload Test Reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -64,6 +81,7 @@ jobs:
           path: target/surefire-reports
           retention-days: 30
 
+      # 4) Upload any screenshots produced during failing test runs.
       - name: Upload Screenshots
         if: always()
         uses: actions/upload-artifact@v4
@@ -75,6 +93,8 @@ jobs:
             screenshots/**/*.png
           retention-days: 30
 
+      # 5) Parse XML results into aggregated statistics and a
+      #    compact, human‑readable summary for notifications.
       - name: Parse Test Results
         if: always()
         continue-on-error: true
@@ -154,6 +174,8 @@ jobs:
             echo "FAIL_REASON=none" >> $GITHUB_ENV
           fi
 
+      # 6) Convert the parsed results into strings friendly for
+      #    Slack and email (including emojis and summary line).
       - name: Format Notification Payload
         if: always()
         run: |
@@ -173,6 +195,8 @@ jobs:
             echo "STATUS_LINE=:white_check_mark: Tests passed. ${SUMMARY}" >> $GITHUB_ENV
           fi
 
+      # 7) Write a rich markdown summary into the GitHub Actions
+      #    run summary page.
       - name: Generate Test Summary
         if: always()
         continue-on-error: true
@@ -204,6 +228,7 @@ jobs:
             echo "- Reports: \`target/surefire-reports/\`" >> $GITHUB_STEP_SUMMARY
           fi
 
+      # 8) Send success notification to Slack (if configured).
       - name: Slack Notification - Success
         if: always() && env.TEST_FAILED == 'false' && env.SLACK_WEBHOOK_URL != ''
         continue-on-error: true
@@ -230,6 +255,7 @@ jobs:
             }')
           curl -sS -X POST "$SLACK_WEBHOOK_URL" -H 'Content-Type: application/json' -d "$PAYLOAD" > /dev/null
 
+      # 9) Send failure notification to Slack (if configured).
       - name: Slack Notification - Failure
         if: always() && env.TEST_FAILED == 'true' && env.SLACK_WEBHOOK_URL != ''
         continue-on-error: true
@@ -256,6 +282,7 @@ jobs:
             }')
           curl -sS -X POST "$SLACK_WEBHOOK_URL" -H 'Content-Type: application/json' -d "$PAYLOAD" > /dev/null
 
+      # 10) Send success notification email (if SMTP secrets exist).
       - name: Email Notification - Success
         if: always() && env.TEST_FAILED == 'false' && env.SMTP_PASSWORD != ''
         continue-on-error: true
@@ -290,6 +317,7 @@ jobs:
             </body>
             </html>
 
+      # 11) Send failure notification email (if SMTP secrets exist).
       - name: Email Notification - Failure
         if: always() && env.TEST_FAILED == 'true' && env.SMTP_PASSWORD != ''
         continue-on-error: true
@@ -326,6 +354,8 @@ jobs:
             </body>
             </html>
 
+      # 12) Always log a concise failure summary to the job logs
+      #     so that information is available even without Slack/email.
       - name: Log Test Failure (Job Continues)
         if: always() && env.TEST_FAILED == 'true'
         run: |
