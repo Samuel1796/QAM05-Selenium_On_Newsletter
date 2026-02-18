@@ -189,9 +189,24 @@ jobs:
       - name: Format Notification Payload
         if: always()
         run: |
-          FORMATTED=$(echo "$TEST_RESULTS" | sed 's/^PASS /✅ /g' | sed 's/^FAIL /❌ /g')
+          # Format each test case on its own line as a professional, readable bullet:
+          # - ✅ ClassName#methodName — optional failure message
+          # - ❌ ClassName#methodName — failure message
+          FORMATTED=$(echo "$TEST_RESULTS" | awk '
+            /^PASS[[:space:]]/ {
+              sub(/^PASS[[:space:]]+/, "");
+              printf "- ✅ %s\n", $0;
+              next;
+            }
+            /^FAIL[[:space:]]/ {
+              sub(/^FAIL[[:space:]]+/, "");
+              printf "- ❌ %s\n", $0;
+              next;
+            }
+            { print }
+          ')
           echo "FORMATTED_RESULTS<<EOFMARKER" >> $GITHUB_ENV
-          echo "$FORMATTED" >> $GITHUB_ENV
+          printf "%s\n" "$FORMATTED" >> $GITHUB_ENV
           echo "EOFMARKER" >> $GITHUB_ENV
 
           SUMMARY="${PASSED_TESTS} passed · ${FAILED_TESTS} failed · ${SKIPPED_TESTS} skipped · ${TOTAL_TESTS} total"
