@@ -185,28 +185,50 @@ jobs:
           fi
 
       # 7) Convert the parsed results into strings friendly for
-      #    Slack and email (including emojis and summary line).
+      #    Slack (plain text) and email (HTML list), plus a summary line.
       - name: Format Notification Payload
         if: always()
         run: |
-          # Format each test case on its own line as a professional, readable bullet:
-          # - ✅ ClassName#methodName — optional failure message
-          # - ❌ ClassName#methodName — failure message
-          FORMATTED=$(echo "$TEST_RESULTS" | awk '
+          # Slack-friendly, line-based list:
+          #   ✅ ClassName#methodName — optional failure message
+          #   ❌ ClassName#methodName — failure message
+          SLACK_RESULTS=$(echo "$TEST_RESULTS" | awk '
             /^PASS[[:space:]]/ {
               sub(/^PASS[[:space:]]+/, "");
-              printf "- ✅ %s\n", $0;
+              printf "✅ %s\n", $0;
               next;
             }
             /^FAIL[[:space:]]/ {
               sub(/^FAIL[[:space:]]+/, "");
-              printf "- ❌ %s\n", $0;
+              printf "❌ %s\n", $0;
               next;
             }
-            { print }
+            { if (NF) printf "%s\n", $0 }
           ')
-          echo "FORMATTED_RESULTS<<EOFMARKER" >> $GITHUB_ENV
-          printf "%s\n" "$FORMATTED" >> $GITHUB_ENV
+
+          # HTML-friendly unordered list for emails:
+          EMAIL_HTML=$(echo "$TEST_RESULTS" | awk '
+            BEGIN { print "<ul>" }
+            /^PASS[[:space:]]/ {
+              sub(/^PASS[[:space:]]+/, "");
+              printf "<li>✅ %s</li>\n", $0;
+              next;
+            }
+            /^FAIL[[:space:]]/ {
+              sub(/^FAIL[[:space:]]+/, "");
+              printf "<li>❌ %s</li>\n", $0;
+              next;
+            }
+            { if (NF) printf "<li>%s</li>\n", $0 }
+            END { print "</ul>" }
+          ')
+
+          echo "FORMATTED_RESULTS_SLACK<<EOFMARKER" >> $GITHUB_ENV
+          printf "%s\n" "$SLACK_RESULTS" >> $GITHUB_ENV
+          echo "EOFMARKER" >> $GITHUB_ENV
+
+          echo "FORMATTED_RESULTS_HTML<<EOFMARKER" >> $GITHUB_ENV
+          printf "%s\n" "$EMAIL_HTML" >> $GITHUB_ENV
           echo "EOFMARKER" >> $GITHUB_ENV
 
           SUMMARY="${PASSED_TESTS} passed · ${FAILED_TESTS} failed · ${SKIPPED_TESTS} skipped · ${TOTAL_TESTS} total"
@@ -240,11 +262,11 @@ jobs:
           echo "|:---:|:---:|:---:|:---:|" >> $GITHUB_STEP_SUMMARY
           echo "| ${PASSED_TESTS} | ${FAILED_TESTS} | ${SKIPPED_TESTS} | ${TOTAL_TESTS} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "${TEST_FAILED}" = "true" ] && [ -n "$FORMATTED_RESULTS" ]; then
+          if [ "${TEST_FAILED}" = "true" ] && [ -n "$FORMATTED_RESULTS_SLACK" ]; then
             echo "### Failed Tests" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "$FORMATTED_RESULTS" >> $GITHUB_STEP_SUMMARY
+            echo "$FORMATTED_RESULTS_SLACK" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
@@ -265,7 +287,7 @@ jobs:
             --arg text "✅ Selenium Tests PASSED" \
             --arg meta "$META" \
             --arg summary "$SUMMARY_LINE" \
-            --arg results "$FORMATTED_RESULTS" \
+            --arg results "$FORMATTED_RESULTS_SLACK" \
             --arg url "$RUN_URL" \
             '{
               text: $text,
@@ -288,7 +310,7 @@ jobs:
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           SHORT_SHA="$(echo "${{ github.sha }}" | cut -c1-7)"
           META="*Repository:* ${{ github.repository }} · *Branch:* ${{ github.ref_name }} · *Java:* ${{ matrix.java-version }} · *Commit:* \`$SHORT_SHA\`"
-          RESULTS_BLOCK=$'*Exit code:* '"${TEST_EXIT_CODE:-0}"$' · *Reason:* '"${FAIL_REASON}"$'\n*Summary:* '"${SUMMARY_LINE}"$'\n\n*Failed test(s):*\n```\n'"${FORMATTED_RESULTS}"$'\n```'
+          RESULTS_BLOCK=$'*Exit code:* '"${TEST_EXIT_CODE:-0}"$' · *Reason:* '"${FAIL_REASON}"$'\n*Summary:* '"${SUMMARY_LINE}"$'\n\n*Failed test(s):*\n```\n'"${FORMATTED_RESULTS_SLACK}"$'\n```'
 
           PAYLOAD=$(jq -n \
             --arg text "❌ Selenium Tests Failed" \
@@ -337,7 +359,7 @@ jobs:
               <tr><td>${{ env.PASSED_TESTS }}</td><td>${{ env.FAILED_TESTS }}</td><td>${{ env.SKIPPED_TESTS }}</td><td>${{ env.TOTAL_TESTS }}</td></tr>
             </table>
             <p><strong>Results</strong></p>
-            <div class="results">${{ env.FORMATTED_RESULTS }}</div>
+            <div class="results">${{ env.FORMATTED_RESULTS_HTML }}</div>
             <p class="footer"><a class="link" href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View workflow run & artifacts →</a></p>
             </body>
             </html>
@@ -374,7 +396,7 @@ jobs:
               <tr><td>${{ env.PASSED_TESTS }}</td><td>${{ env.FAILED_TESTS }}</td><td>${{ env.SKIPPED_TESTS }}</td><td>${{ env.TOTAL_TESTS }}</td></tr>
             </table>
             <p><strong>Failed test(s)</strong></p>
-            <div class="results">${{ env.FORMATTED_RESULTS }}</div>
+            <div class="results">${{ env.FORMATTED_RESULTS_HTML }}</div>
             <p class="footer"><a class="link" href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View workflow run, logs & artifacts →</a></p>
             </body>
             </html>
@@ -393,6 +415,7 @@ jobs:
           echo "SKIPPED_TESTS: ${SKIPPED_TESTS}"
           echo "TEST_FAILED: ${TEST_FAILED}"
           echo "FAIL_REASON: ${FAIL_REASON}"
-          echo "FORMATTED_RESULTS: ${FORMATTED_RESULTS}"
+          echo "FORMATTED_RESULTS_SLACK: ${FORMATTED_RESULTS_SLACK}"
+          echo "FORMATTED_RESULTS_HTML: ${FORMATTED_RESULTS_HTML}"
           echo "SUMMARY_LINE: ${SUMMARY_LINE}"
           echo "STATUS_LINE: ${STATUS_LINE}"
