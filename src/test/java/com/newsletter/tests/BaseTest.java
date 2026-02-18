@@ -1,15 +1,24 @@
 package com.newsletter.tests;
 
 import io.github.bonigarcia.wdm.WebDriverManager;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 
+import java.io.File;
+import java.io.IOException;
+import java.text.SimpleDateFormat;
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.logging.ConsoleHandler;
+import java.util.logging.FileHandler;
+import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.logging.SimpleFormatter;
 
 /**
  * Base Test class that manages WebDriver lifecycle.
@@ -23,6 +32,60 @@ import java.util.logging.Logger;
 public class BaseTest {
     protected WebDriver driver;
     protected static final Logger logger = Logger.getLogger(BaseTest.class.getName());
+
+    static {
+        configureRootLogging();
+    }
+
+    /**
+     * Configure java.util.logging to log both to the console and to a per-run
+     * file under target/logs/. This runs once per JVM (per Maven test run).
+     */
+    private static void configureRootLogging() {
+        Logger rootLogger = Logger.getLogger("");
+
+        // Avoid re-configuring if a FileHandler is already present (e.g. from another test suite).
+        boolean alreadyConfigured = Arrays.stream(rootLogger.getHandlers())
+                .anyMatch(h -> h instanceof FileHandler);
+        if (alreadyConfigured) {
+            return;
+        }
+
+        try {
+            // Remove default handlers to prevent duplicate console output.
+            for (Handler handler : rootLogger.getHandlers()) {
+                rootLogger.removeHandler(handler);
+            }
+
+            rootLogger.setLevel(Level.INFO);
+
+            // Console output for live visibility (local runs and CI logs).
+            ConsoleHandler consoleHandler = new ConsoleHandler();
+            consoleHandler.setLevel(Level.INFO);
+            consoleHandler.setFormatter(new SimpleFormatter());
+            rootLogger.addHandler(consoleHandler);
+
+            // Per-run log file under target/logs for traceability.
+            String logsDirPath = "target/logs";
+            File logsDir = new File(logsDirPath);
+            if (!logsDir.exists()) {
+                logsDir.mkdirs();
+            }
+
+            String timestamp = new SimpleDateFormat("yyyyMMdd-HHmmss").format(new Date());
+            String logFilePath = logsDirPath + "/selenium-tests-" + timestamp + ".log";
+
+            FileHandler fileHandler = new FileHandler(logFilePath, true);
+            fileHandler.setLevel(Level.INFO);
+            fileHandler.setFormatter(new SimpleFormatter());
+            rootLogger.addHandler(fileHandler);
+
+            rootLogger.info("Logging configured. Writing to console and " + logFilePath);
+        } catch (IOException e) {
+            Logger.getAnonymousLogger().log(Level.WARNING,
+                    "Failed to configure file logging; falling back to defaults.", e);
+        }
+    }
 
     @BeforeEach
     public void setUp() {
