@@ -93,7 +93,17 @@ jobs:
             screenshots/**/*.png
           retention-days: 30
 
-      # 5) Parse XML results into aggregated statistics and a
+      # 5) Upload Java util.logging output files to aid debugging and traceability.
+      - name: Upload Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: selenium-logs-java-${{ matrix.java-version }}
+          path: target/logs
+          retention-days: 30
+
+      # 6) Parse XML results into aggregated statistics and a
       #    compact, human‑readable summary for notifications.
       - name: Parse Test Results
         if: always()
@@ -174,7 +184,7 @@ jobs:
             echo "FAIL_REASON=none" >> $GITHUB_ENV
           fi
 
-      # 6) Convert the parsed results into strings friendly for
+      # 7) Convert the parsed results into strings friendly for
       #    Slack and email (including emojis and summary line).
       - name: Format Notification Payload
         if: always()
@@ -195,7 +205,7 @@ jobs:
             echo "STATUS_LINE=:white_check_mark: Tests passed. ${SUMMARY}" >> $GITHUB_ENV
           fi
 
-      # 7) Write a rich markdown summary into the GitHub Actions
+      # 8) Write a rich markdown summary into the GitHub Actions
       #    run summary page.
       - name: Generate Test Summary
         if: always()
@@ -228,7 +238,7 @@ jobs:
             echo "- Reports: \`target/surefire-reports/\`" >> $GITHUB_STEP_SUMMARY
           fi
 
-      # 8) Send success notification to Slack (if configured).
+      # 9) Send success notification to Slack (if configured).
       - name: Slack Notification - Success
         if: always() && env.TEST_FAILED == 'false' && env.SLACK_WEBHOOK_URL != ''
         continue-on-error: true
@@ -255,7 +265,7 @@ jobs:
             }')
           curl -sS -X POST "$SLACK_WEBHOOK_URL" -H 'Content-Type: application/json' -d "$PAYLOAD" > /dev/null
 
-      # 9) Send failure notification to Slack (if configured).
+      # 10) Send failure notification to Slack (if configured).
       - name: Slack Notification - Failure
         if: always() && env.TEST_FAILED == 'true' && env.SLACK_WEBHOOK_URL != ''
         continue-on-error: true
@@ -282,7 +292,7 @@ jobs:
             }')
           curl -sS -X POST "$SLACK_WEBHOOK_URL" -H 'Content-Type: application/json' -d "$PAYLOAD" > /dev/null
 
-      # 10) Send success notification email (if SMTP secrets exist).
+      # 11) Send success notification email (if SMTP secrets exist).
       - name: Email Notification - Success
         if: always() && env.TEST_FAILED == 'false' && env.SMTP_PASSWORD != ''
         continue-on-error: true
@@ -317,7 +327,7 @@ jobs:
             </body>
             </html>
 
-      # 11) Send failure notification email (if SMTP secrets exist).
+      # 12) Send failure notification email (if SMTP secrets exist).
       - name: Email Notification - Failure
         if: always() && env.TEST_FAILED == 'true' && env.SMTP_PASSWORD != ''
         continue-on-error: true
@@ -354,7 +364,7 @@ jobs:
             </body>
             </html>
 
-      # 12) Always log a concise failure summary to the job logs
+      # 13) Always log a concise failure summary to the job logs
       #     so that information is available even without Slack/email.
       - name: Log Test Failure (Job Continues)
         if: always() && env.TEST_FAILED == 'true'
