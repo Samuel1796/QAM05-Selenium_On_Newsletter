@@ -1,7 +1,6 @@
 package com.newsletter.tests;
 
-import com.newsletter.pages.SignUpPage;
-import com.newsletter.pages.SuccessPage;
+
 import com.newsletter.utils.Utils;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.Tag;
@@ -15,8 +14,6 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class SignUpTest extends BaseTest {
-    protected SignUpPage signUpPage;
-    protected SuccessPage successPage;
     private static final Logger logger = Logger.getLogger(SignUpTest.class.getName());
 
     /**
@@ -63,23 +60,6 @@ public class SignUpTest extends BaseTest {
                     prefix + "Validation error message should contain '" + keyword + "' but was: " + error);
         }
     }
-
-    @BeforeEach
-    @Override
-    public void setUp() {
-        super.setUp();
-        logger.info("Initializing page objects for SignUp tests.");
-        signUpPage = new SignUpPage(driver);
-        successPage = new SuccessPage(driver);
-    }
-
-    @AfterEach
-    @Override
-    public void tearDown() {
-        logger.info("Cleaning up after SignUp test.");
-        super.tearDown();
-    }
-
 
     /**
      * Verifies that an invalid email format does not allow subscription.

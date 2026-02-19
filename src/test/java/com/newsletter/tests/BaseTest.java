@@ -1,5 +1,7 @@
 package com.newsletter.tests;
 
+import com.newsletter.pages.SignUpPage;
+import com.newsletter.pages.SuccessPage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.openqa.selenium.WebDriver;
@@ -28,8 +30,10 @@ import java.util.logging.SimpleFormatter;
  * <p>In CI environments (for example GitHub Actions), the browser is started in headless mode when
  * the environment variable {@code CI=true} or {@code HEADLESS=true} is set.</p>
  */
-public class BaseTest {
+ public class BaseTest {
     protected WebDriver driver;
+    protected SignUpPage signUpPage;
+    protected SuccessPage successPage;
     protected static final Logger logger = Logger.getLogger(BaseTest.class.getName());
 
     static {
@@ -108,11 +112,9 @@ public class BaseTest {
 
         driver = new ChromeDriver(options);
 
-
-
-
-
-
+        // Initialize commonly used page objects so test classes stay focused on assertions.
+        signUpPage = new SignUpPage(driver);
+        successPage = new SuccessPage(driver);
 //         If the element isn't found immediately,
 //         WebDriver will keep trying for up to 10 seconds before giving up and throwing a
 //         NoSuchElementException. This is a global setting, so it applies to all
