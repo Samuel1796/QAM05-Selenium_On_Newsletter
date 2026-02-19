@@ -1,5 +1,6 @@
 package com.newsletter.pages;
 
+import com.newsletter.utils.PageObjectSupport;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.FindBy;
@@ -8,7 +9,7 @@ import org.openqa.selenium.By;
 /**
  * Page Object for Newsletter Sign-up Form
  */
-public class SignUpPage extends BasePage {
+public class SignUpPage extends PageObjectSupport {
 
     // Locators using @FindBy annotation (Page Factory Pattern)
     @FindBy(id = "email")
@@ -19,9 +20,6 @@ public class SignUpPage extends BasePage {
 
     @FindBy(id = "error-message")
     private WebElement errorMessage;
-
-    @FindBy(css = "h1, [class*='heading']")
-    private WebElement pageHeading;
 
     @FindBy(id = "sign-form")
     private WebElement signUpForm;
@@ -132,9 +130,6 @@ public class SignUpPage extends BasePage {
     /**
      * Get page heading text
      */
-    public String getPageHeading() {
-        return getText(pageHeading);
-    }
 
     /**
      * Check if email input field is displayed

@@ -103,6 +103,32 @@ jobs:
           path: target/logs
           retention-days: 30
 
+      # 6b) Upload raw Allure results so a full HTML report
+      #     can be generated or served later.
+      - name: Upload Allure Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: allure-results-java-${{ matrix.java-version }}
+          path: target/allure-results
+          retention-days: 30
+
+      # 6c) Optionally generate a full static Allure HTML report
+      #     on the runner and upload it as an artifact.
+      - name: Generate Allure HTML Report
+        if: always()
+        run: mvn allure:report
+
+      - name: Upload Allure HTML Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: allure-report-java-${{ matrix.java-version }}
+          path: target/site/allure-maven-plugin
+          retention-days: 30
+
       # 6) Parse XML results into aggregated statistics and a
       #    compact, human‑readable summary for notifications.
       - name: Parse Test Results

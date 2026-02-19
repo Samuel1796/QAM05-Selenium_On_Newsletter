@@ -1,5 +1,6 @@
 package com.newsletter.pages;
 
+import com.newsletter.utils.PageObjectSupport;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.By;
@@ -9,7 +10,7 @@ import org.openqa.selenium.support.ui.ExpectedConditions;
 /**
  * Page Object for Success Message Page
  */
-public class SuccessPage extends BasePage {
+public class SuccessPage extends PageObjectSupport {
 
     // Locators using @FindBy annotation
     @FindBy(css = ".success-message, [class*='success']")
