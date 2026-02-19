@@ -1,6 +1,5 @@
 package com.newsletter.tests;
 
-import io.github.bonigarcia.wdm.WebDriverManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.openqa.selenium.WebDriver;
@@ -90,7 +89,6 @@ public class BaseTest {
     @BeforeEach
     public void setUp() {
         logger.info("Setting up WebDriver for test.");
-        WebDriverManager.chromedriver().setup();
 
         boolean headless =
                 Boolean.parseBoolean(System.getenv().getOrDefault("HEADLESS",
@@ -99,7 +97,7 @@ public class BaseTest {
         ChromeOptions options = new ChromeOptions();
         if (headless) {
             logger.info("Running Chrome in headless mode (CI/headless environment detected).");
-            // Required for Linux CI runners without a display server.
+            //Required for Linux CI runners without a display server.(Restrictions on CI pipeline)
             options.addArguments("--headless=new");
             options.addArguments("--no-sandbox");
             options.addArguments("--disable-dev-shm-usage");
@@ -110,7 +108,15 @@ public class BaseTest {
 
         driver = new ChromeDriver(options);
 
-        driver.manage().window().maximize();
+
+
+
+
+
+//         If the element isn't found immediately,
+//         WebDriver will keep trying for up to 10 seconds before giving up and throwing a
+//         NoSuchElementException. This is a global setting, so it applies to all
+//         findElement calls.
 
         // Implicit wait for simple element lookups; explicit waits live in the Page Objects.
         driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));

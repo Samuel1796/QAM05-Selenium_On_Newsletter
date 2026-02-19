@@ -118,7 +118,7 @@ QAM05-Selenium_On_Newsletter/
 
 ### Concept
 
-**Page Object Model** is a design pattern that models web pages as Java classes. Each page has:
+**Page Object Model** The Page Object Model (POM) is a design pattern in test automation that improves maintenance and reduces code duplication by separating UI locators and actions from test scripts. is a design pattern that models web pages as Java classes. Each page has:
 - **Locators**: Element identifiers
 - **Methods**: Actions that can be performed on the page
 - **Return types**: Often returns the page object itself for method chaining

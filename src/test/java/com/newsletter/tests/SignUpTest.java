@@ -37,6 +37,8 @@ public class SignUpTest extends BaseTest {
         assertValidationErrorContainsForInput(null, expectedKeywords);
     }
 
+
+
     /**
      * Same as {@link #assertValidationErrorContains(String...)} but includes the
      * input value in failure
@@ -78,6 +80,7 @@ public class SignUpTest extends BaseTest {
         super.tearDown();
     }
 
+
     /**
      * Verifies that an invalid email format does not allow subscription.
      *
@@ -101,6 +104,8 @@ public class SignUpTest extends BaseTest {
         assertValidationErrorContains("email", "valid");
     }
 
+
+
     /**
      * Verifies that submitting the form with an empty email field is blocked by
      * validation.
@@ -122,6 +127,8 @@ public class SignUpTest extends BaseTest {
         // Typical copy includes "email" and "required" for empty submissions.
         assertValidationErrorContains("email", "required");
     }
+
+
 
     /**
      * Provides a small random subset of invalid email strings for negative testing.

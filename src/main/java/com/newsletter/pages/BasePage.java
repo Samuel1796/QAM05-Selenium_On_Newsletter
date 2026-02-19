@@ -12,6 +12,8 @@ import java.time.Duration;
  * Base Page class containing common methods for all page objects
  */
 public class BasePage {
+    protected static final String BASE_PAGE_URL = "https://newsletter-sign-up-form-bay.vercel.app/";
+
     protected WebDriver driver;
     protected WebDriverWait wait;
 

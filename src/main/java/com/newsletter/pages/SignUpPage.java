@@ -10,9 +10,6 @@ import org.openqa.selenium.By;
  */
 public class SignUpPage extends BasePage {
 
-    // Page URL
-    private static final String PAGE_URL = "https://newsletter-sign-up-form-bay.vercel.app/";
-
     // Locators using @FindBy annotation (Page Factory Pattern)
     @FindBy(id = "email")
     private WebElement emailInput;
@@ -40,7 +37,7 @@ public class SignUpPage extends BasePage {
      * Navigate to the newsletter sign-up page
      */
     public SignUpPage navigateToPage() {
-        driver.get(PAGE_URL);
+        driver.get(BASE_PAGE_URL);
         return this;
     }
 
