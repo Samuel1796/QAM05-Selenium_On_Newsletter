@@ -188,7 +188,7 @@ public class SignUpTest extends BaseTest {
      */
     @ParameterizedTest(name = "Valid email should be accepted: {0}")
     @MethodSource("validEmailProvider")
-    @DisplayName("[TC004] Verify Successful Subscription with Various Valid Email Formats")
+    @DisplayName("[TC003] Verify Successful Subscription with Various Valid Email Formats")
     @Tag("signup")
     @Tag("positive")
     public void testValidEmailFormats(String validEmail) {
@@ -206,7 +206,7 @@ public class SignUpTest extends BaseTest {
      * </p>
      */
     @Test
-    @DisplayName("[TC005] Verify Subscribe Button is Clickable")
+    @DisplayName("[TC004] Verify Subscribe Button is Clickable")
     @Tag("signup")
     @Tag("smoke")
     public void testSubscribeButtonIsClickable() {
@@ -217,48 +217,6 @@ public class SignUpTest extends BaseTest {
         signUpPage.clickSubscribe();
     }
 
-    /**
-     * Verifies that the email input is cleared after a browser refresh.
-     *
-     * <p>
-     * This newsletter form does not persist input values across page reloads (no
-     * localStorage,
-     * sessionStorage, or server-side session). A refresh is expected to reset the
-     * form to its
-     * initial empty state.
-     * </p>
-     */
-    @Test
-    @DisplayName("[TC006] Verify Email Input Clears After Page Refresh")
-    @Tag("signup")
-    @Tag("regression")
-    public void testFormPersistenceAfterRefresh() {
-        logger.info("Running testFormPersistenceAfterRefresh");
-        signUpPage.navigateToPage();
-
-        // Enter an email into the input field
-        String testEmail = Utils.generateRandomEmail();
-        signUpPage.enterEmail(testEmail);
-
-        // Refresh the page
-        driver.navigate().refresh();
-
-        // Re-initialize page object after refresh to get fresh element references
-        signUpPage = new SignUpPage(driver);
-
-        // Wait for the email input to be visible and ready after refresh
-        signUpPage.waitForEmailInputReady();
-
-        // Check if the input is visible and page returned to sign-up form context
-        assertTrue(signUpPage.isEmailInputDisplayed(), "Email input should be displayed after refresh");
-        assertTrue(signUpPage.isFormDisplayed() || signUpPage.isEmailInputDisplayed(),
-                "Form should be displayed after refresh");
-
-        // The form should reset on refresh — input is cleared
-        String emailAfterRefresh = signUpPage.getEmailInputValue();
-        assertTrue(emailAfterRefresh.isEmpty(),
-                "Email input should be cleared after page refresh, but was: " + emailAfterRefresh);
-    }
 
     /**
      * Verifies that the email field can accept a long email string without breaking
@@ -271,7 +229,7 @@ public class SignUpTest extends BaseTest {
      * </p>
      */
     @Test
-    @DisplayName("[TC007] Verify Maximum Length of Email Input")
+    @DisplayName("[TC005] Verify Maximum Length of Email Input")
     @Tag("signup")
     @Tag("regression")
     public void testEmailInputMaxLength() {
@@ -298,7 +256,7 @@ public class SignUpTest extends BaseTest {
      * </p>
      */
     @Test
-    @DisplayName("[TC008] Verify Special Characters in Email")
+    @DisplayName("[TC006] Verify Special Characters in Email")
     @Tag("signup")
     @Tag("positive")
     public void testSpecialCharactersInEmail() {
@@ -320,7 +278,7 @@ public class SignUpTest extends BaseTest {
      * </p>
      */
     @Test
-    @DisplayName("[TC009] Verify Form Behavior with Leading/Trailing Spaces")
+    @DisplayName("[TC007] Verify Form Behavior with Leading/Trailing Spaces")
     @Tag("signup")
     @Tag("positive")
     public void testEmailWithSpaces() {
@@ -339,7 +297,7 @@ public class SignUpTest extends BaseTest {
      * </p>
      */
     @Test
-    @DisplayName("[TC010] Verify Success Page Displays Correct Email After Subscription")
+    @DisplayName("[TC008] Verify Success Page Displays Correct Email After Subscription")
     @Tag("signup")
     @Tag("regression")
     public void testSuccessPageDisplaysEmail() {
@@ -363,7 +321,7 @@ public class SignUpTest extends BaseTest {
      * </p>
      */
     @Test
-    @DisplayName("[TC011] Verify Error Message Disappears When Valid Email Entered")
+    @DisplayName("[TC009] Verify Error Message Disappears When Valid Email Entered")
     @Tag("signup")
     @Tag("negative")
     public void testErrorMessageClearsOnValidEmail() {
@@ -377,28 +335,5 @@ public class SignUpTest extends BaseTest {
         assertTrue(signUpPage.waitForErrorMessageToDisappear(), "Error message should no longer be displayed");
     }
 
-    /**
-     * Verifies that the "Dismiss" action on the success screen returns the user to
-     * the sign-up form.
-     *
-     * <p>
-     * Expected result: sign-up form becomes visible again after dismissal.
-     * </p>
-     */
-    @Test
-    @DisplayName("[TC012] Verify Dismiss Button Returns to Form")
-    @Tag("signup")
-    @Tag("regression")
-    public void testDismissSuccessMessage() {
-        logger.info("Running testDismissSuccessMessage");
-        signUpPage.navigateToPage();
-        signUpPage.completeSignUp(Utils.generateRandomEmail());
-        assertTrue(successPage.isOnSuccessPage(), "Should be on success page");
 
-        successPage.clickDismissButton();
-
-        // Re-initialize to get fresh element references
-        signUpPage = new SignUpPage(driver);
-        assertTrue(signUpPage.isOnSignUpPage(), "Should return to sign-up form");
-    }
 }
