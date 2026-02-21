@@ -3,6 +3,7 @@ package com.newsletter.tests.signup;
 
 import com.newsletter.tests.base.BaseTest;
 import com.newsletter.utils.Utils;
+import io.qameta.allure.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -14,6 +15,8 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@Feature("Newsletter Sign-Up")
+@Story("Email Validation and Subscription")
 public class SignUpTest extends BaseTest {
     private static final Logger logger = Logger.getLogger(SignUpTest.class.getName());
 
@@ -72,6 +75,8 @@ public class SignUpTest extends BaseTest {
      */
     @Test
     @DisplayName("[TC001] Verify Error Message for Invalid Email Format")
+    @Description("Verify that invalid email format triggers validation error and prevents subscription")
+    @Severity(SeverityLevel.CRITICAL)
     @Tag("signup")
     @Tag("negative")
     public void testInvalidEmailFormat() {
@@ -95,6 +100,8 @@ public class SignUpTest extends BaseTest {
      */
     @Test
     @DisplayName("[TC002] Verify Error Message for Empty Email Field")
+    @Description("Verify that empty email field triggers required field validation error")
+    @Severity(SeverityLevel.CRITICAL)
     @Tag("signup")
     @Tag("negative")
     public void testEmptyEmailField() {
@@ -134,6 +141,8 @@ public class SignUpTest extends BaseTest {
     @ParameterizedTest(name = "Invalid email should be rejected: {0}")
     @MethodSource("invalidEmailProvider")
     @DisplayName("[TC003] Verify Form Validation with Multiple Invalid Email Formats")
+    @Description("Verify that various invalid email patterns are rejected")
+    @Severity(SeverityLevel.NORMAL)
     @Tag("signup")
     @Tag("negative")
     public void testMultipleInvalidEmailFormats(String invalidEmail) {
@@ -173,6 +182,8 @@ public class SignUpTest extends BaseTest {
     @ParameterizedTest(name = "Valid email should be accepted: {0}")
     @MethodSource("validEmailProvider")
     @DisplayName("[TC003] Verify Successful Subscription with Various Valid Email Formats")
+    @Description("Verify that various valid email formats are accepted and subscription succeeds")
+    @Severity(SeverityLevel.CRITICAL)
     @Tag("signup")
     @Tag("positive")
     public void testValidEmailFormats(String validEmail) {
@@ -191,6 +202,8 @@ public class SignUpTest extends BaseTest {
      */
     @Test
     @DisplayName("[TC004] Verify Subscribe Button is Clickable")
+    @Description("Smoke test: Verify that the subscribe button is present and clickable")
+    @Severity(SeverityLevel.TRIVIAL)
     @Tag("signup")
     @Tag("smoke")
     public void testSubscribeButtonIsClickable() {
@@ -213,6 +226,8 @@ public class SignUpTest extends BaseTest {
      */
     @Test
     @DisplayName("[TC005] Verify Maximum Length of Email Input")
+    @Description("Verify that the email input field handles long email addresses gracefully")
+    @Severity(SeverityLevel.MINOR)
     @Tag("signup")
     @Tag("regression")
     public void testEmailInputMaxLength() {
@@ -240,6 +255,8 @@ public class SignUpTest extends BaseTest {
      */
     @Test
     @DisplayName("[TC006] Verify Special Characters in Email")
+    @Description("Verify that email addresses with special characters (dot, plus) are accepted")
+    @Severity(SeverityLevel.NORMAL)
     @Tag("signup")
     @Tag("positive")
     public void testSpecialCharactersInEmail() {
@@ -262,6 +279,8 @@ public class SignUpTest extends BaseTest {
      */
     @Test
     @DisplayName("[TC007] Verify Form Behavior with Leading/Trailing Spaces")
+    @Description("Verify that emails with leading/trailing spaces are handled correctly")
+    @Severity(SeverityLevel.NORMAL)
     @Tag("signup")
     @Tag("positive")
     public void testEmailWithSpaces() {
@@ -281,6 +300,8 @@ public class SignUpTest extends BaseTest {
      */
     @Test
     @DisplayName("[TC008] Verify Success Page Displays Correct Email After Subscription")
+    @Description("Verify that success page displays the subscribed email address")
+    @Severity(SeverityLevel.NORMAL)
     @Tag("signup")
     @Tag("regression")
     public void testSuccessPageDisplaysEmail() {
@@ -305,6 +326,8 @@ public class SignUpTest extends BaseTest {
      */
     @Test
     @DisplayName("[TC009] Verify Error Message Disappears When Valid Email Entered")
+    @Description("Verify that validation error messages clear when valid email is entered")
+    @Severity(SeverityLevel.NORMAL)
     @Tag("signup")
     @Tag("negative")
     public void testErrorMessageClearsOnValidEmail() {

@@ -2,6 +2,8 @@ package com.newsletter.tests.base;
 
 import com.newsletter.pages.SignUpPage;
 import com.newsletter.pages.SuccessPage;
+import com.newsletter.utils.AllureTestUtils;
+import io.qameta.allure.Step;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.openqa.selenium.WebDriver;
@@ -87,6 +89,7 @@ public class BaseTest {
     }
 
     @BeforeEach
+    @Step("Initialize WebDriver and Page Objects")
     public void setUp() {
         logger.info("Setting up WebDriver for test.");
 
@@ -125,6 +128,16 @@ public class BaseTest {
 
     @AfterEach
     public void tearDown() {
+        // Capture screenshot on test failure
+        if (driver != null) {
+            try {
+                // Attach screenshot for Allure report
+                AllureTestUtils.attachScreenshot(driver);
+            } catch (Exception e) {
+                logger.log(Level.WARNING, "Failed to capture screenshot for Allure report.", e);
+            }
+        }
+
         // Always close the browser to prevent resource leaks.
         logger.info("Tearing down WebDriver after test.");
         if (driver != null) {

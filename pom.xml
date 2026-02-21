@@ -78,7 +78,16 @@
                     <statelessTestsetReporter implementation="org.apache.maven.plugin.surefire.extensions.junit5.JUnit5Xml30StatelessReporter">
                         <usePhrasedTestCaseMethodName>true</usePhrasedTestCaseMethodName>
                     </statelessTestsetReporter>
+                    <!-- Configure listeners for Allure -->
+                    <reportFormat>plain</reportFormat>
                 </configuration>
+                <dependencies>
+                    <dependency>
+                        <groupId>io.qameta.allure</groupId>
+                        <artifactId>allure-junit5</artifactId>
+                        <version>${allure.version}</version>
+                    </dependency>
+                </dependencies>
             </plugin>
             <!-- Allure Maven plugin to generate and serve HTML reports -->
             <plugin>
